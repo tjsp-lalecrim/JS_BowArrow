@@ -1,0 +1,81 @@
+:root {
+    --game-area-width: 800px;
+    --game-area-height: 800px;
+    --game-info-height: 100px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+header {
+    width: 100%;
+    height: 100px;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+header h1 {
+    color: #fff;
+    font-size: 2rem;
+}
+
+header .header-buttons {
+    position: absolute;
+    right: 20px;
+}
+
+.header-buttons button {
+    margin-left: 10px;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    background: #fff;
+    color: #000;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.body {
+    width: 100vw;
+    height: 100vh;
+}
+
+.wrapper {
+    width: var(--game-area-width);
+    height: var(--game-area-height);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: auto;
+}
+
+.game-info {
+    width: 100%;
+    height: var(--game-info-height);
+    background: gray;
+    display: flex;
+}
+
+.game-info .info-column {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.info-column * {
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+#pauseButton {
+    visibility: hidden;
+}

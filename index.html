@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bow and Arrow</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <header>
+        <h1>Bow and Arrow</h1>
+        <div class="header-buttons">
+            <button id="pauseButton">Pause</button>
+            <button id="startButton">Start</button>
+        </div>
+    </header>
+    <div class="wrapper">
+        <div class="game-info">
+            <div class="info-column">
+                <div id="score" class="info-item">Score: </div>
+                <div id="highScore" class="info-item">High Score: </div>
+            </div>
+            <div class="info-column">
+                <div id="level" class="info-item"></div>
+                <div id="description" class="info-item">Press Start</div>
+            </div>
+            <div class="info-column">
+                <div id="arrowLeft" class="info-item">Arrows Left: </div>
+                <div id="timeLeft" class="info-item">Time Left: </div>
+            </div>
+        </div>
+
+        <canvas id="game-area"></canvas>
+
+        <script src="js/script.js"></script>
+    </div>
+</body>
+
+</html>
