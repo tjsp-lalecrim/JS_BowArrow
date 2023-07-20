@@ -224,8 +224,9 @@ function updateInfo() {
   document.querySelector("#arrowLeft").innerHTML = "Arrows Left: " + arrowsLeft;
   document.querySelector("#timeLeft").innerHTML =
     "Time Left: " + timeLeft + "s";
-  document.querySelector("#level").innerHTML = "Level: " + currLevel.id;
-  document.querySelector("#description").innerHTML = currLevel.description;
+  document.querySelector("#level").innerHTML = "Level: " + currLevel?.id ?? 0;
+  document.querySelector("#description").innerHTML =
+    currLevel?.description ?? "Press Start";
 }
 
 // Collision
@@ -348,10 +349,10 @@ function update() {
 
 // Loop functions
 function loop() {
-  window.requestAnimationFrame(loop, cnv);
-
   update();
   render();
+
+  window.requestAnimationFrame(loop, cnv);
 }
 
 // Spawn
@@ -362,6 +363,7 @@ function spawnTarget() {
     currLevel.spawnType == "line"
       ? cnvH - newTarget.h
       : Math.random() * (cnvH - newTarget.h);
+  console.log(currLevel.speed);
   return newTarget;
 }
 
@@ -393,9 +395,6 @@ function startLevel(index) {
     }
     timeLeft--;
   }, 1000);
-
-  // start loop
-  loop();
 }
 
 // Init
@@ -507,3 +506,6 @@ function pauseOrResume() {
 }
 
 document.querySelector("#pauseButton").addEventListener("click", pauseOrResume);
+
+// start loop
+loop();
