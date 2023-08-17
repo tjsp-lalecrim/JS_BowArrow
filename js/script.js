@@ -8,6 +8,7 @@ let arrowsLeft = 0;
 
 let timer = null;
 let timeLeft = 0;
+let popInterval = null;
 
 let isPaused = false;
 let isGameOver = false;
@@ -107,15 +108,15 @@ let arrow = {
 arrow.img.src = "images/arrow.png";
 
 let target = {
-  img: new Image(),
   w: 25,
   h: 46,
   shooted: false,
+  anim: 0,
+  delay: 1000,
   update: function () {
     this.y -= currLevel.speed;
   },
 };
-target.img.src = "images/baloon.png";
 
 // Render functions
 function renderBackground() {
@@ -157,21 +158,19 @@ function renderTarget() {
   for (let i = 0; i < targets.length; i++) {
     const currTarget = targets[i];
 
-    if (!currTarget.shooted) {
-      ctx.save();
-      ctx.drawImage(
-        currTarget.img,
-        0,
-        0,
-        currTarget.w,
-        currTarget.h,
-        currTarget.x,
-        currTarget.y,
-        currTarget.w,
-        currTarget.h
-      );
-      ctx.restore();
-    }
+    ctx.save();
+    ctx.drawImage(
+      currTarget.img,
+      0,
+      0,
+      currTarget.w,
+      currTarget.h,
+      currTarget.x,
+      currTarget.y,
+      currTarget.w,
+      currTarget.h
+    );
+    ctx.restore();
   }
 }
 
@@ -239,8 +238,30 @@ function collision(obj1, obj2) {
   );
 }
 
-function targetPop(index) {
-  // todo: add pop animation
+function setPopInterval() {
+  popInterval = setInterval(() => {
+    if (targets?.length === 0) return;
+
+    targets?.forEach((t) => {
+      if (!t.shooted) return;
+
+      t.img.src = BALOON_POP_ANIMATION[++t.anim];
+    });
+  }, 75);
+}
+
+function handleTargetPop() {
+  targets.forEach((t) => {
+    if (!t.shooted) return;
+
+    if (t.anim === BALOON_POP_ANIMATION.length - 1) {
+      t.pop = true;
+      score += 10;
+      return;
+    }
+  });
+
+  targets = targets.filter((t) => !t.pop);
 }
 
 function updateArrow() {
@@ -257,9 +278,6 @@ function updateArrow() {
     for (let j = 0; j < targets.length; j++) {
       if (collision(arrows[i], targets[j])) {
         targets[j].shooted = true;
-        targetPop(j);
-        targets.splice(j, 1);
-        score += 10;
       }
     }
   }
@@ -318,6 +336,7 @@ function handleNextLevel() {
 
 function handleGameOver() {
   isGameOver = true;
+  clearInterval(popInterval);
   renderBackground();
   renderGameOver();
   document.querySelector("#pauseButton").style.visibility = "hidden";
@@ -342,6 +361,7 @@ function update() {
 
   bow.update();
   updateArrow();
+  handleTargetPop();
   updateTarget();
   updateInfo();
   checkGameOver();
@@ -363,7 +383,7 @@ function spawnTarget() {
     currLevel.spawnType == "line"
       ? cnvH - newTarget.h
       : Math.random() * (cnvH - newTarget.h);
-  console.log(currLevel.speed);
+  (newTarget.img = new Image()), (newTarget.img.src = "images/baloon.png");
   return newTarget;
 }
 
@@ -385,6 +405,9 @@ function startLevel(index) {
   for (let i = 0; i < currLevel.targets; i++) {
     targets.push(spawnTarget());
   }
+
+  clearInterval(popInterval);
+  setPopInterval();
 
   // start timer
   clearInterval(timer);
