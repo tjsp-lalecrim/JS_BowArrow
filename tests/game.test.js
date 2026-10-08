@@ -29,7 +29,7 @@ test('initial screen and preload failure', async () => {
   const g = await game();
   assert.equal(g.run('state'), 'idle');
   assert.equal(g.elements.level.textContent, 'Level: 0');
-  assert.equal(g.run('images.size'), 13);
+  assert.equal(g.run('images.size'), 16);
   const failed = await game({ failImage: true });
   assert.equal(failed.run('state'), 'error');
   assert.equal(failed.elements.startButton.disabled, true);
@@ -169,7 +169,7 @@ test('later levels vary movement within the play area and pause freezes it', asy
   assert.ok(g.run('targets[0].speed < targets[14].speed'));
   for (let i=0; i<200; i++) {
     g.run('update(1/120)');
-    assert.ok(g.run('targets.every(t=>t.x >= WIDTH/2 - currLevel.sway && t.x+t.w <= WIDTH)'));
+    assert.ok(g.run('targets.every(t=>t.x >= 360 && t.x+t.w <= WIDTH)'));
   }
   const before = g.run('JSON.stringify(targets)');
   g.run('pauseOrResume(); update(2)');
@@ -242,6 +242,55 @@ test('level 2 waits for last arrow and loses only when ammunition is exhausted',
   assert.equal(g.run('state'), 'lost');
   assert.equal(g.run('levelIndex'), 1);
   assert.ok(g.run('remainingTime > 0'));
+});
+test('level 3 uses butterfly bubbles with vertical-only movement', async () => {
+  const g = await game();
+  g.run('startLevel(2)');
+  assert.equal(g.run('remainingTime'), 75);
+  assert.equal(g.run('arrowsLeft'), 20);
+  assert.ok(g.run('targets.every(t=>t.type===\'bubble\' && t.w===32 && t.h===32)'));
+  const before = g.run('targets.map(t=>t.x).join()');
+  g.run('for(let i=0;i<10*120;i++) update(1/120)');
+  assert.equal(g.run('targets.map(t=>t.x).join()'), before);
+  assert.ok(g.run('targets.every(t=>t.y>=16 && t.y+t.h<=HEIGHT-16)'));
+});
+test('bubbles reverse at both vertical edges without teleporting', async () => {
+  const g = await game();
+  g.run('startLevel(2); targets[0].y=16.1; targets[0].direction=-1; update(0.01)');
+  assert.equal(g.run('targets[0].direction'), 1);
+  assert.ok(g.run('targets[0].y>=16 && targets[0].y<17'));
+  g.run('targets[0].y=551.9; targets[0].direction=1; update(0.01)');
+  assert.equal(g.run('targets[0].direction'), -1);
+  assert.ok(g.run('targets[0].y<=552 && targets[0].y>551'));
+});
+test('bubble collision accepts its center and rejects transparent corners', async () => {
+  const g = await game();
+  assert.equal(g.run('targetCollision({x:85,y:114,w:32,h:5},{type:\'bubble\',x:100,y:100,w:32,h:32})'), true);
+  assert.equal(g.run('targetCollision({x:72,y:100,w:32,h:5},{type:\'bubble\',x:100,y:100,w:32,h:32})'), false);
+  assert.equal(g.run('targetCollision({x:85,y:135,w:32,h:5},{type:\'bubble\',x:100,y:100,w:32,h:32})'), false);
+});
+test('bubble hit scores once, releases butterfly and pauses its animation', async () => {
+  const g = await game();
+  g.run('startLevel(2); targets[0].x=100; targets[0].y=100; targets[0].speed=0; arrows=[{x:90,y:114,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('targets[0].hit'), true);
+  assert.equal(g.run('score'), 10);
+  g.run('update(0.2)');
+  const animationTime = g.run('targets[0].popTime');
+  g.run('pauseOrResume(); update(2)');
+  assert.equal(g.run('targets[0].popTime'), animationTime);
+  g.run('pauseOrResume(); update(0.56)');
+  assert.equal(g.run('targets.length'), 14);
+  assert.equal(g.run('score'), 10);
+});
+test('level 3 movement is consistent across refresh rates', async () => {
+  async function simulate(hz) {
+    const g = await game();
+    g.run('Math.random=()=>0.5; startLevel(2); loop(0)');
+    for (let i=1;i<=hz;i++) g.run(`loop(${i*1000/hz})`);
+    return g.run('targets.map(t=>t.y)');
+  }
+  const a=await simulate(60), b=await simulate(144);
+  for(let i=0;i<a.length;i++) assert.ok(Math.abs(a[i]-b[i])<1e-7);
 });
 (async () => {
   let failures=0;

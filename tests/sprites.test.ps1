@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $workspace = Split-Path $PSScriptRoot -Parent
 $count=0
@@ -19,3 +19,22 @@ foreach ($file in Get-ChildItem (Join-Path $workspace 'images/originals') -Filte
     $before.Dispose();$after.Dispose();$count++
 }
 if ($count -ne 13) { throw 'Expected 13 sprite pairs.' }
+foreach ($spec in @(@{Name='bubble.png';Size=32},@{Name='butterfly_01.png';Size=18},@{Name='butterfly_02.png';Size=18})) {
+    $image=New-Object System.Drawing.Bitmap((Join-Path $workspace ('images/'+$spec.Name)))
+    if($image.Width -ne $spec.Size -or $image.Height -ne $spec.Size) { throw ('Invalid size: '+$spec.Name) }
+    $visible=0
+    for($y=0;$y -lt $image.Height;$y++) {
+        for($x=0;$x -lt $image.Width;$x++) {
+            $alpha=$image.GetPixel($x,$y).A
+            if($alpha -gt 0) { $visible++ }
+            if($spec.Name -eq 'bubble.png') {
+                $distance=[Math]::Sqrt([Math]::Pow($x+0.5-16,2)+[Math]::Pow($y+0.5-16,2))
+                if(($distance -gt 14 -or $distance -lt 10) -and $alpha -gt 0) { throw 'Bubble alpha does not match collision circle.' }
+            }
+        }
+    }
+    if($visible -lt 20) { throw ('Empty sprite: '+$spec.Name) }
+    if($image.GetPixel(0,0).A -ne 0 -or $image.GetPixel($image.Width-1,$image.Height-1).A -ne 0) { throw ('Opaque corner: '+$spec.Name) }
+    Write-Output ('PASS '+$spec.Name+': dimensions and transparency')
+    $image.Dispose()
+}
