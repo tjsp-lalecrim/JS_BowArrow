@@ -96,3 +96,5 @@ Native full screen requests landscape orientation through Screen Orientation API
 On coarse-pointer devices, Resume displays a three-second countdown before gameplay restarts. Stage time, enemies, animations and ammunition remain frozen during the countdown. Pause, opening Options or leaving the tab cancels it; the next Resume starts again at three. Desktop resume remains immediate.
 
 Fullscreen play requests a screen wake lock to prevent automatic dimming/locking on supported secure browser contexts. Pausing, leaving fullscreen or completing/losing a stage releases it. Resume requests it again. Options shows active/inactive/unavailable status. Unsupported or denied requests do not affect gameplay; system power settings may release the lock. Real-device validation remains pending.
+
+Defeat messages explain whether the cause was timeout, exhausted arrows, an unprotected enemy hit, friendly fire on the dove, capture, or an escaped vulture. The canvas and status text indicate Continue when a checkpoint exists, otherwise Restart. Starting/retrying a level clears the old reason.

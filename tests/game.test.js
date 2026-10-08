@@ -756,6 +756,35 @@ test('pending wake request is released if play ends before acquisition; denied A
   assert.equal(g.run('screenWakeLock'),null);
   assert.equal(g.elements.wakeStatus.textContent,'Screen awake: unavailable');
 });
+test('defeat reports timer, ammunition and unprotected enemy contact', async () => {
+  for(const [setup,reason] of [
+    ['remainingTime=0; checkGameOver()','Time ran out.'],
+    ['arrowsLeft=0; arrows=[]; checkGameOver()','No arrows left.'],
+    ['receivePlayerHit()','An enemy hit you with no magic feathers left.']
+  ]) {
+    const g=await game();
+    g.run('start(); '+setup);
+    assert.equal(g.run('defeatReason'),reason);
+    assert.ok(g.elements.bowStatus.textContent.includes(reason));
+    assert.ok(g.elements.bowStatus.textContent.includes('Restart'));
+    g.run('start()');
+    assert.equal(g.run('defeatReason'),'');
+  }
+});
+test('messenger failure identifies friendly fire, capture and escaped enemies', async () => {
+  for(const [setup,reason] of [
+    ['arrows=[{x:90,y:290,w:32,h:5}]','Your arrow hit the messenger dove.'],
+    ['targets[0].x=dove.x; targets[0].y=dove.y','A vulture caught the messenger dove.'],
+    ['targets[0].x=-41','A vulture escaped. The message is unsafe.']
+  ]) {
+    const g=await game();
+    g.run('startLevel(5); targets=[]; checkGameOver(); nextLevel(); '+setup+'; update(1/120)');
+    assert.equal(g.run('defeatReason'),reason);
+    assert.ok(g.elements.bowStatus.textContent.includes('Continue'));
+    g.run('continueCheckpoint()');
+    assert.equal(g.run('defeatReason'),'');
+  }
+});
 (async () => {
   let failures=0;
   for (const {name,fn} of tests) {

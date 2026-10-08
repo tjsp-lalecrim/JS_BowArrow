@@ -27,6 +27,7 @@ const keys = new Set();
 let state = 'loading';
 let immersive = false;
 let resumeCountdown = 0;
+let defeatReason = '';
 let landscapeLocked = false;
 let screenWakeLock = null;
 let wakeRequestPending = false;
@@ -209,7 +210,7 @@ function updateInfo() {
   ui.stageBrief.textContent = 'Level ' + currLevel?.id + ': ' + (STAGE_GOALS[levelIndex] ?? '');
   ui.beginButton.disabled = state !== 'ready';
   ui.shootButton.setAttribute('data-feedback', feedbackTime > 0 ? feedbackAction : '');
-  ui.bowStatus.textContent = protectionTime > 0 ? 'Magic feather absorbed the hit!' : feedbackTime > 0 ? (feedbackAction === 'shoot' ? 'Arrow fired!' : 'Bow reloaded!') : bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
+  ui.bowStatus.textContent = state === 'lost' ? defeatReason + (checkpoint ? ' Use Continue to retry.' : ' Use Restart to try again.') : protectionTime > 0 ? 'Magic feather absorbed the hit!' : feedbackTime > 0 ? (feedbackAction === 'shoot' ? 'Arrow fired!' : 'Bow reloaded!') : bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
   ui.startButton.disabled = state === 'loading' || state === 'error';
   ui.continueButton.hidden = !checkpoint || !['idle', 'lost'].includes(state);
   ui.continueButton.disabled = ui.continueButton.hidden;
@@ -222,6 +223,7 @@ function updateInfo() {
   ui.shootButton.textContent = bow.empty ? 'Reload' : 'Shoot';
 }
 function startLevel(index) {
+  defeatReason = '';
   ui.settingsMenu.open = false;
   levelIndex = index;
   currLevel = LEVELS[index];
@@ -390,10 +392,15 @@ function checkGameOver() {
   // Hits count immediately: the last hit at the deadline wins, even during its pop animation.
   if (targets.every(t => t.hit || t.friendly) && (!dove || messageDelivered)) return finishLevel();
   if (remainingTime <= 0 || (arrowsLeft <= 0 && arrows.length === 0)) {
-    updateHighScore();
-    setState('lost');
-    playSound('lose');
+    loseGame(remainingTime <= 0 ? 'Time ran out.' : 'No arrows left.');
   }
+}
+function loseGame(reason) {
+  if (state !== 'playing') return;
+  defeatReason = reason;
+  updateHighScore();
+  setState('lost');
+  playSound('lose');
 }
 function registerTargetHit(t) {
   t.hit = true;
@@ -420,9 +427,7 @@ function receivePlayerHit() {
     updateInfo();
     return true;
   }
-  updateHighScore();
-  setState('lost');
-  playSound('lose');
+  loseGame('An enemy hit you with no magic feathers left.');
   return true;
 }
 function update(dt) {
@@ -465,12 +470,12 @@ function update(dt) {
       dove.x += 100 * dt;
       if (dove.x > WIDTH) messageDelivered = true;
     }
-    if (arrows.some(a => !a.spent && collision(arrowHitbox(a), dove)) ||
-        targets.some(t => !t.hit && t.type === 'vulture' && (collision(t, dove) || t.x + t.w < 0))) {
+    const friendlyHit = arrows.some(a => !a.spent && collision(arrowHitbox(a), dove));
+    const captured = targets.some(t => !t.hit && t.type === 'vulture' && collision(t, dove));
+    const escaped = targets.some(t => !t.hit && t.type === 'vulture' && t.x + t.w < 0);
+    if (friendlyHit || captured || escaped) {
       dove.hit = true;
-      updateHighScore();
-      setState('lost');
-      playSound('lose');
+      loseGame(friendlyHit ? 'Your arrow hit the messenger dove.' : captured ? 'A vulture caught the messenger dove.' : 'A vulture escaped. The message is unsafe.');
     }
   }
   // Resolve enemy contact after arrow hits so a successful shot prevents damage.
@@ -480,7 +485,7 @@ function update(dt) {
       t.hit = true;
       t.popTime = 0;
       receivePlayerHit();
-      if (t.type === 'vulture' && state === 'playing') { dove.hit = true; updateHighScore(); setState('lost'); playSound('lose'); }
+      if (t.type === 'vulture' && state === 'playing') { dove.hit = true; loseGame('A vulture passed your defense.'); }
       if (state !== 'playing') break;
     } else if (t.x + t.w < 0) {
       // Dodged enemies have passed the archer; survival also completes the wave.
@@ -556,6 +561,12 @@ function render() {
     ctx.font = '50px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(message, WIDTH / 2, HEIGHT / 2);
+    if (state === 'lost') {
+      ctx.font = '22px Arial';
+      ctx.fillText(defeatReason, WIDTH / 2, HEIGHT / 2 + 45, WIDTH - 48);
+      ctx.font = '18px Arial';
+      ctx.fillText(checkpoint ? 'Continue retries your saved level.' : 'Restart begins a new game.', WIDTH / 2, HEIGHT / 2 + 78, WIDTH - 48);
+    }
   }
 }
 function loop(timestamp) {
