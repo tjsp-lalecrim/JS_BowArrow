@@ -527,7 +527,7 @@ test('touch and pen move without firing; mouse and shoot button still fire', asy
   const pointer=type=>({isPrimary:true,button:0,pointerType:type,pointerId:1,clientY:200,preventDefault(){}});
   g.elements['game-area'].handlers.pointerdown(pointer('touch'));
   g.elements['game-area'].handlers.pointermove({...pointer('touch'),buttons:1,clientY:300});
-  assert.equal(g.run('bow.y'),368);
+  assert.equal(g.run('bow.y'),468);
   assert.equal(g.run('arrowsLeft'),20);
   assert.equal(g.run('arrows.length'),0);
   g.elements['game-area'].handlers.pointerdown(pointer('pen'));
@@ -562,6 +562,72 @@ test('fullscreen supports native entry and exit plus fallback when unavailable o
     assert.equal(g.run('immersive'),false);
     assert.equal(g.elements.fullscreenButton['aria-pressed'],'false');
   }
+});
+test('relative drag has no initial jump and ends on cancellation or pause', async () => {
+  const g=await game();
+  g.run('start()');
+  const canvas=g.elements['game-area'];
+  const event={pointerType:'touch',pointerId:4,button:0,isPrimary:false,clientY:900,preventDefault(){}};
+  canvas.handlers.pointerdown(event);
+  assert.equal(g.run('bow.y'),268);
+  canvas.handlers.pointermove({...event,clientY:910});
+  assert.equal(g.run('bow.y'),288);
+  canvas.handlers.pointermove({...event,pointerId:5,clientY:100});
+  assert.equal(g.run('bow.y'),288);
+  canvas.handlers.pointercancel(event);
+  canvas.handlers.pointermove({...event,clientY:920});
+  assert.equal(g.run('bow.y'),288);
+  canvas.handlers.pointerdown(event);
+  g.run('pauseOrResume(); pauseOrResume()');
+  canvas.handlers.pointermove({...event,clientY:920});
+  assert.equal(g.run('bow.y'),288);
+});
+test('second finger shoots immediately while first continues dragging, with no double click', async () => {
+  const g=await game();
+  g.run('start()');
+  const event={pointerType:'touch',pointerId:1,button:0,clientY:200,preventDefault(){}};
+  g.elements['game-area'].handlers.pointerdown(event);
+  g.elements.shootButton.handlers.pointerdown({...event,pointerId:2,isPrimary:false});
+  assert.equal(g.run('arrowsLeft'),19);
+  assert.equal(g.run('bow.empty'),true);
+  g.elements.shootButton.handlers.click({detail:1});
+  assert.equal(g.run('bow.empty'),true);
+  g.elements['game-area'].handlers.pointermove({...event,clientY:210});
+  assert.equal(g.run('bow.y'),288);
+  assert.equal(g.run('movementPointer.id'),1);
+  assert.equal(g.elements.shootButton['data-feedback'],'shoot');
+});
+test('hand preference persists and works when storage is unavailable', async () => {
+  for(const blockedStorage of [false,true]) {
+    const g=await game({blockedStorage});
+    g.elements.handButton.handlers.click();
+    assert.equal(g.run('leftHanded'),true);
+    assert.equal(g.elements.handButton['aria-pressed'],'true');
+    if(!blockedStorage) assert.equal(g.store.get('bowArrow.leftHanded'),'yes');
+  }
+});
+test('mobile briefing freezes stage until Begin and returns for checkpoints', async () => {
+  const g=await game();
+  g.run('window.matchMedia=()=>({matches:true}); startLevel(6); update(10)');
+  assert.equal(g.run('state'),'ready');
+  assert.equal(g.run('remainingTime'),90);
+  assert.equal(g.run('targets[0].x'),800);
+  assert.equal(g.elements.stageIntro.hidden,false);
+  assert.ok(g.elements.stageBrief.textContent.includes('Protect the white dove'));
+  g.elements.beginButton.handlers.click();
+  assert.equal(g.run('state'),'playing');
+  assert.equal(g.elements.stageIntro.hidden,true);
+  g.run('startLevel(4)');
+  assert.ok(g.elements.stageBrief.textContent.includes('gold center'));
+});
+test('shot feedback expires and feather damage is announced', async () => {
+  const g=await game();
+  g.run('start(); shootOrReload()');
+  assert.equal(g.elements.bowStatus.textContent,'Arrow fired!');
+  g.run('update(0.3)');
+  assert.equal(g.elements.shootButton['data-feedback'],'');
+  g.run('magicFeathers=1; receivePlayerHit()');
+  assert.equal(g.elements.bowStatus.textContent,'Magic feather absorbed the hit!');
 });
 (async () => {
   let failures=0;

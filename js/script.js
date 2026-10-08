@@ -21,11 +21,26 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
 let immersive = false;
+let movementPointer = null;
+let suppressShootClick = false;
+let feedbackTime = 0;
+let feedbackAction = '';
+let leftHanded = false;
+try { leftHanded = localStorage.getItem('bowArrow.leftHanded') === 'yes'; } catch { /* Optional preference. */ }
+const STAGE_GOALS = [
+  'Shoot all red balloons.',
+  'Shoot red balloons. Avoid yellow balloons.',
+  'Pop the bubbles to free every butterfly.',
+  'Shoot or dodge the slimes. Feathers protect against contact.',
+  'Aim through the gold center of the moving target.',
+  'Shoot or dodge the fireballs. Feathers protect against contact.',
+  'Shoot every vulture. Protect the white dove and let none pass.'
+];
 let levelIndex = 0;
 let currLevel = null;
 let arrows = [];
@@ -72,7 +87,7 @@ function continueCheckpoint() {
   // The saved stock excludes the next level's supply; startLevel adds it once.
   startLevel(checkpoint.levelIndex);
   ui.startButton.textContent = 'Restart';
-  cnv.focus({ preventScroll: true });
+  focusGame();
 }
 function readHighScore() {
   try {
@@ -157,6 +172,7 @@ function resetClock() {
 function setState(next) {
   stopSounds();
   state = next;
+  movementPointer = null;
   keys.clear();
   resetClock();
   updateInfo();
@@ -172,7 +188,11 @@ function updateInfo() {
   ui.magicFeathers.textContent = 'Magic Feathers: ' + magicFeathers;
   ui.timeLeft.textContent = 'Time Left: ' + Math.ceil(remainingTime) + 's';
   ui.targetsLeft.textContent = 'Targets Left: ' + targets.filter(t => !t.hit && !t.friendly).length;
-  ui.bowStatus.textContent = bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
+  ui.stageIntro.hidden = state !== 'ready';
+  ui.stageBrief.textContent = 'Level ' + currLevel?.id + ': ' + (STAGE_GOALS[levelIndex] ?? '');
+  ui.beginButton.disabled = state !== 'ready';
+  ui.shootButton.setAttribute('data-feedback', feedbackTime > 0 ? feedbackAction : '');
+  ui.bowStatus.textContent = protectionTime > 0 ? 'Magic feather absorbed the hit!' : feedbackTime > 0 ? (feedbackAction === 'shoot' ? 'Arrow fired!' : 'Bow reloaded!') : bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
   ui.startButton.disabled = state === 'loading' || state === 'error';
   ui.continueButton.hidden = !checkpoint || !['idle', 'lost'].includes(state);
   ui.continueButton.disabled = ui.continueButton.hidden;
@@ -228,7 +248,9 @@ function startLevel(index) {
       hit: false, popTime: 0,
     });
   }
-  setState('playing');
+  feedbackTime = 0;
+  setState(window.matchMedia?.('(pointer: coarse)')?.matches ? 'ready' : 'playing');
+  if (state === 'ready') ui.beginButton.focus({ preventScroll: true });
 }
 function start() {
   if (state === 'loading' || state === 'error') return;
@@ -239,13 +261,13 @@ function start() {
   messageDelivered = false;
   startLevel(0);
   ui.startButton.textContent = 'Restart';
-  cnv.focus({ preventScroll: true });
+  focusGame();
 }
 function pauseOrResume() {
   if (state !== 'playing' && state !== 'paused') return;
   unlockAudio();
   setState(state === 'playing' ? 'paused' : 'playing');
-  cnv.focus({ preventScroll: true });
+  focusGame();
 }
 function collision(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -314,6 +336,8 @@ function updateTargetMotion(t, dt) {
 function shootOrReload() {
   if (state !== 'playing' || remainingTime <= 0 || arrowsLeft <= 0) return;
   unlockAudio();
+  feedbackTime = 0.25;
+  feedbackAction = bow.empty ? 'reload' : 'shoot';
   if (bow.empty) {
     playSound('reload');
     bow.empty = false;
@@ -379,6 +403,7 @@ function receivePlayerHit() {
 }
 function update(dt) {
   if (state !== 'playing') return;
+  feedbackTime = Math.max(0, feedbackTime - dt);
   protectionTime = Math.max(0, protectionTime - dt);
   remainingTime = Math.max(0, remainingTime - dt);
   if (remainingTime < 1e-9) remainingTime = 0;
@@ -516,6 +541,9 @@ function loop(timestamp) {
   render();
   window.requestAnimationFrame(loop);
 }
+function focusGame() {
+  (state === 'ready' ? ui.beginButton : cnv).focus({ preventScroll: true });
+}
 function positionBow(event) {
   if (state !== 'playing') return;
   const rect = cnv.getBoundingClientRect();
@@ -527,17 +555,35 @@ function positionBow(event) {
   bow.y = Math.max(0, Math.min(HEIGHT - bow.h, (event.clientY - pictureTop) * HEIGHT / pictureHeight - bow.h / 2));
 }
 cnv.addEventListener('pointermove', event => {
-  if (event.pointerType === 'mouse' || event.buttons) positionBow(event);
+  if (event.pointerType === 'mouse') return positionBow(event);
+  if (state !== 'playing' || !movementPointer || event.pointerId !== movementPointer.id) return;
+  const rect = cnv.getBoundingClientRect();
+  const height = Number.isFinite(rect.width) ? Math.min(rect.height, rect.width * HEIGHT / WIDTH) : rect.height;
+  if (height <= 0) return;
+  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, bow.y + (event.clientY - movementPointer.y) * HEIGHT / height));
+  movementPointer.y = event.clientY;
 });
 cnv.addEventListener('pointerdown', event => {
-  if (!event.isPrimary || event.button !== 0 || state !== 'playing') return;
+  if (event.button !== 0 || state !== 'playing') return;
+  if (event.pointerType !== 'mouse' && movementPointer) return;
   event.preventDefault();
-  cnv.focus({ preventScroll: true });
+  focusGame();
   cnv.setPointerCapture(event.pointerId);
-  positionBow(event);
-  // Touch and pen gestures move only; the dedicated button fires/reloads.
-  if (event.pointerType === 'mouse') shootOrReload();
+  if (event.pointerType === 'mouse') {
+    positionBow(event);
+    shootOrReload();
+  } else {
+    // Accept a second finger here too when the shooting finger touched first.
+    movementPointer = { id: event.pointerId, y: event.clientY };
+  }
 });
+function endMovement(event) {
+  if (movementPointer?.id === event.pointerId) movementPointer = null;
+}
+cnv.addEventListener('pointerup', endMovement);
+cnv.addEventListener('pointercancel', endMovement);
+cnv.addEventListener('lostpointercapture', endMovement);
+window.addEventListener('resize', () => { movementPointer = null; });
 cnv.addEventListener('keydown', event => {
   if (!['ArrowUp', 'ArrowDown', 'Space', 'KeyP', 'Escape'].includes(event.code)) return;
   event.preventDefault();
@@ -565,7 +611,7 @@ function nextLevel() {
   if (state !== 'transition') return;
   unlockAudio();
   startLevel(levelIndex + 1);
-  cnv.focus({ preventScroll: true });
+  focusGame();
 }
 function updateFullscreen() {
   document.documentElement?.classList.toggle('immersive', immersive);
@@ -597,7 +643,36 @@ ui.nextLevelButton.addEventListener('click', nextLevel);
 ui.soundButton.addEventListener('click', toggleSound);
 ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);
-ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });
+ui.shootButton.addEventListener('pointerdown', event => {
+  suppressShootClick = false;
+  if (!['touch', 'pen'].includes(event.pointerType) || event.button !== 0 || ui.shootButton.disabled) return;
+  event.preventDefault();
+  suppressShootClick = true;
+  shootOrReload();
+});
+ui.shootButton.addEventListener('click', event => {
+  if (suppressShootClick && event?.detail !== 0) { suppressShootClick = false; return; }
+  suppressShootClick = false;
+  shootOrReload();
+  focusGame();
+});
+function updateHandPreference() {
+  document.documentElement?.classList.toggle('left-handed', leftHanded);
+  ui.handButton.textContent = leftHanded ? 'Controls: Left' : 'Controls: Right';
+  ui.handButton.setAttribute('aria-pressed', String(leftHanded));
+}
+ui.handButton.addEventListener('click', () => {
+  leftHanded = !leftHanded;
+  try { localStorage.setItem('bowArrow.leftHanded', leftHanded ? 'yes' : 'no'); } catch { /* Optional preference. */ }
+  updateHandPreference();
+});
+ui.beginButton.addEventListener('click', () => {
+  if (state !== 'ready') return;
+  unlockAudio();
+  setState('playing');
+  focusGame();
+});
+updateHandPreference();
 function preloadSprites() {
   return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target', 'fireball', 'vulture', 'dove'])].map(name => new Promise((resolve, reject) => {
     const img = new Image();
