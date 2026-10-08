@@ -661,6 +661,32 @@ test('invalid sensitivity falls back to normal and changing it ends the active d
   g.elements.sensitivityButton.handlers.click();
   assert.equal(g.run('dragPreset'),1);
 });
+test('options pause active gameplay and closing does not silently resume', async () => {
+  const g=await game();
+  g.run('start()');
+  g.elements.settingsMenu.open=true;
+  g.elements.settingsMenu.handlers.toggle();
+  assert.equal(g.run('state'),'paused');
+  g.run('update(5)');
+  assert.equal(g.run('remainingTime'),60);
+  g.elements.settingsMenu.handlers.keydown({code:'Escape',preventDefault(){}});
+  assert.equal(g.elements.settingsMenu.open,false);
+  assert.equal(g.run('state'),'paused');
+  g.run('pauseOrResume()');
+  assert.equal(g.run('state'),'playing');
+  assert.equal(g.elements.settingsMenu.open,false);
+});
+test('options leave initial and terminal states intact and restart closes them', async () => {
+  const g=await game();
+  for(const state of ['idle','lost','won','transition','ready']) {
+    g.run("state='"+state+"'");
+    g.elements.settingsMenu.open=true;
+    g.elements.settingsMenu.handlers.toggle();
+    assert.equal(g.run('state'),state);
+  }
+  g.run('start()');
+  assert.equal(g.elements.settingsMenu.open,false);
+});
 (async () => {
   let failures=0;
   for (const {name,fn} of tests) {

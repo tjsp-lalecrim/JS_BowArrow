@@ -11,6 +11,15 @@
     <header>
         <h1>Bow and Arrow</h1>
         <div class="header-buttons">
+            <details id="settingsMenu">
+                <summary id="settingsSummary">Options</summary>
+                <div class="settings-panel">
+                    <button id="soundButton" type="button" aria-pressed="true">Sound: On</button>
+                    <button id="handButton" type="button" aria-pressed="false">Controls: Right</button>
+                    <button id="sensitivityButton" type="button">Drag: Normal</button>
+                    <p>Opening options pauses the game. Use Resume when ready.</p>
+                </div>
+            </details>
             <button id="sensitivityButton" type="button">Drag: Normal</button>
             <button id="handButton" type="button" aria-pressed="false">Controls: Right</button>
             <button id="fullscreenButton" type="button" aria-pressed="false">Full Screen</button>

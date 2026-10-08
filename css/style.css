@@ -71,3 +71,21 @@ html.immersive, .immersive body { width: 100%; height: 100%; overflow: hidden; }
     .immersive .game-controls { padding: 4px 12px; }
     #shootButton { min-width: 140px; }
 }
+#settingsMenu { position: relative; }
+#settingsSummary {
+    display: flex; align-items: center; justify-content: center; min-height: 44px;
+    padding: 10px 16px; border: 1px solid #aaa; border-radius: 5px;
+    background: #fff; color: #000; cursor: pointer; list-style: none; touch-action: manipulation;
+}
+#settingsSummary::-webkit-details-marker { display: none; }
+#settingsSummary:focus-visible { outline: 3px solid #216bff; outline-offset: 3px; }
+#settingsMenu[open] #settingsSummary { background: #dbe7ff; }
+.settings-panel {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 5;
+    display: flex; flex-direction: column; gap: 8px; width: min(240px, 85vw);
+    max-height: calc(100dvh - 70px); overflow-y: auto;
+    padding: 12px; border: 1px solid #aaa; border-radius: 6px;
+    background: #fff; color: #222; box-shadow: 0 4px 16px #0004;
+}
+.settings-panel p { font-size: .85rem; line-height: 1.4; }
+.immersive #settingsSummary { padding: 6px 10px; }

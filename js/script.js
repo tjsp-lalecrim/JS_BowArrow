@@ -21,7 +21,7 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton', 'sensitivityButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton', 'sensitivityButton', 'settingsMenu', 'settingsSummary'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
@@ -216,6 +216,7 @@ function updateInfo() {
   ui.shootButton.textContent = bow.empty ? 'Reload' : 'Shoot';
 }
 function startLevel(index) {
+  ui.settingsMenu.open = false;
   levelIndex = index;
   currLevel = LEVELS[index];
   remainingTime = currLevel.time;
@@ -277,6 +278,7 @@ function start() {
 function pauseOrResume() {
   if (state !== 'playing' && state !== 'paused') return;
   unlockAudio();
+  if (state === 'paused') ui.settingsMenu.open = false;
   setState(state === 'playing' ? 'paused' : 'playing');
   focusGame();
 }
@@ -684,6 +686,15 @@ ui.beginButton.addEventListener('click', () => {
   focusGame();
 });
 updateHandPreference();
+ui.settingsMenu.addEventListener('toggle', () => {
+  if (ui.settingsMenu.open && state === 'playing') setState('paused');
+});
+ui.settingsMenu.addEventListener('keydown', event => {
+  if (event.code !== 'Escape' || !ui.settingsMenu.open) return;
+  event.preventDefault();
+  ui.settingsMenu.open = false;
+  ui.settingsSummary.focus({ preventScroll: true });
+});
 function updateSensitivity() {
   ui.sensitivityButton.textContent = 'Drag: ' + DRAG_PRESETS[dragPreset].label;
   ui.sensitivityButton.setAttribute('aria-label', 'Drag sensitivity: ' + DRAG_PRESETS[dragPreset].label + '. Activate to change.');
