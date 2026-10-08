@@ -345,7 +345,9 @@ function render() {
   ctx.fillStyle = 'green';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
   const bowFrame = bow.animationTime === null ? 0 : Math.min(5, 1 + Math.floor((bow.animationTime + 1e-9) / 0.1));
-  drawSprite(BOW_FRAMES[bowFrame], bow);
+  drawSprite('archer', bow);
+  // Fit the bow to the character; keep the grip and arrow origin centered.
+  drawSprite(BOW_FRAMES[bowFrame], { x: bow.x, y: bow.y + 10, w: bow.w, h: 44 });
   arrows.forEach(a => drawSprite('arrow', a));
   targets.forEach(renderTarget);
   const message = { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Level ' + currLevel?.id + ' complete!', lost: 'Game Over', won: 'You win!' }[state];
@@ -422,7 +424,7 @@ ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);
 ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });
 function preloadSprites() {
-  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow'])].map(name => new Promise((resolve, reject) => {
+  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer'])].map(name => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => { images.set(name, img); resolve(); };
     img.onerror = () => reject(new Error('Unable to load ' + name));

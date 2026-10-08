@@ -29,7 +29,7 @@ test('initial screen and preload failure', async () => {
   const g = await game();
   assert.equal(g.run('state'), 'idle');
   assert.equal(g.elements.level.textContent, 'Level: 0');
-  assert.equal(g.run('images.size'), 16);
+  assert.equal(g.run('images.size'), 17);
   const failed = await game({ failImage: true });
   assert.equal(failed.run('state'), 'error');
   assert.equal(failed.elements.startButton.disabled, true);

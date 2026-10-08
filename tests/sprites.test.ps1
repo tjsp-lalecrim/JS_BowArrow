@@ -19,7 +19,7 @@ foreach ($file in Get-ChildItem (Join-Path $workspace 'images/originals') -Filte
     $before.Dispose();$after.Dispose();$count++
 }
 if ($count -ne 13) { throw 'Expected 13 sprite pairs.' }
-foreach ($spec in @(@{Name='bubble.png';Size=32},@{Name='butterfly_01.png';Size=18},@{Name='butterfly_02.png';Size=18})) {
+foreach ($spec in @(@{Name='archer.png';Size=64},@{Name='bubble.png';Size=32},@{Name='butterfly_01.png';Size=18},@{Name='butterfly_02.png';Size=18})) {
     $image=New-Object System.Drawing.Bitmap((Join-Path $workspace ('images/'+$spec.Name)))
     if($image.Width -ne $spec.Size -or $image.Height -ne $spec.Size) { throw ('Invalid size: '+$spec.Name) }
     $visible=0
