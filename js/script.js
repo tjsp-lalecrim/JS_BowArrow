@@ -18,7 +18,7 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
@@ -34,10 +34,40 @@ let remainingTime = 0;
 
 let score = 0;
 let highScore = readHighScore();
+const CHECKPOINT_KEY = 'bowArrow.checkpoint';
+let checkpoint = readCheckpoint();
 let previousTimestamp = null;
 let accumulator = 0;
 const bow = { x: 0, y: 268, w: 64, h: 64, empty: false, animationTime: null };
 
+function readCheckpoint() {
+  try {
+    const data = JSON.parse(localStorage.getItem(CHECKPOINT_KEY));
+    if (!data || data.version !== 1 ||
+        !Number.isInteger(data.levelIndex) || data.levelIndex < 1 || data.levelIndex >= LEVELS.length ||
+        !['score', 'arrowsLeft', 'magicFeathers'].every(key => Number.isSafeInteger(data[key]) && data[key] >= 0)) return null;
+    return { version: 1, levelIndex: data.levelIndex, score: data.score, arrowsLeft: data.arrowsLeft, magicFeathers: data.magicFeathers };
+  } catch { return null; }
+}
+function saveCheckpoint() {
+  checkpoint = { version: 1, levelIndex: levelIndex + 1, score, arrowsLeft, magicFeathers };
+  try { localStorage.setItem(CHECKPOINT_KEY, JSON.stringify(checkpoint)); } catch { /* Keep an in-memory checkpoint when storage is unavailable. */ }
+}
+function clearCheckpoint() {
+  checkpoint = null;
+  try { localStorage.removeItem(CHECKPOINT_KEY); } catch { /* Storage is optional. */ }
+}
+function continueCheckpoint() {
+  if (!checkpoint || !['idle', 'lost'].includes(state)) return;
+  unlockAudio();
+  score = checkpoint.score;
+  arrowsLeft = checkpoint.arrowsLeft;
+  magicFeathers = checkpoint.magicFeathers;
+  // The saved stock excludes the next level's supply; startLevel adds it once.
+  startLevel(checkpoint.levelIndex);
+  ui.startButton.textContent = 'Restart';
+  cnv.focus({ preventScroll: true });
+}
 function readHighScore() {
   try {
     const value = Number(localStorage.getItem('bowArrow.highScore'));
@@ -138,6 +168,9 @@ function updateInfo() {
   ui.targetsLeft.textContent = 'Targets Left: ' + targets.filter(t => !t.hit && !t.friendly).length;
   ui.bowStatus.textContent = bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
   ui.startButton.disabled = state === 'loading' || state === 'error';
+  ui.continueButton.hidden = !checkpoint || !['idle', 'lost'].includes(state);
+  ui.continueButton.disabled = ui.continueButton.hidden;
+  ui.continueButton.textContent = checkpoint ? 'Continue — Level ' + LEVELS[checkpoint.levelIndex].id : 'Continue';
   ui.nextLevelButton.hidden = state !== 'transition';
   ui.nextLevelButton.disabled = state !== 'transition';
   ui.pauseButton.hidden = state !== 'playing' && state !== 'paused';
@@ -250,8 +283,9 @@ function shootOrReload() {
 function finishLevel() {
   score += Math.ceil(remainingTime) * 10 + arrowsLeft * 10;
   updateHighScore();
-  if (levelIndex === LEVELS.length - 1) { setState('won'); playSound('win'); }
+  if (levelIndex === LEVELS.length - 1) { clearCheckpoint(); setState('won'); playSound('win'); }
   else {
+    saveCheckpoint();
     setState('transition');
     playSound('level');
   }
@@ -448,6 +482,7 @@ function nextLevel() {
   startLevel(levelIndex + 1);
   cnv.focus({ preventScroll: true });
 }
+ui.continueButton.addEventListener('click', continueCheckpoint);
 ui.nextLevelButton.addEventListener('click', nextLevel);
 ui.soundButton.addEventListener('click', toggleSound);
 ui.startButton.addEventListener('click', start);

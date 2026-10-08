@@ -3,9 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const source = fs.readFileSync(path.join(__dirname, '../js/script.js'), 'utf8');
-async function game({ blockedStorage = false, failImage = false } = {}) {
+async function game({ blockedStorage = false, failImage = false, savedCheckpoint = null } = {}) {
   const elements = {};
   const store = new Map();
+  if (savedCheckpoint !== null) store.set('bowArrow.checkpoint', savedCheckpoint);
   const context = new Proxy({}, { get: () => () => {} });
   function element(id) {
     return elements[id] ||= { textContent: '', handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, setAttribute(name, value) { this[name] = value; }, getContext() { return context; }, focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { top: 100, height: 300 }; } };
@@ -13,7 +14,7 @@ async function game({ blockedStorage = false, failImage = false } = {}) {
   const sandbox = {
     document: { querySelector: () => element('game-area'), getElementById: element, addEventListener() {} },
     window: { requestAnimationFrame() {}, addEventListener() {} },
-    localStorage: { getItem(key) { if (blockedStorage) throw Error('blocked'); return store.get(key) ?? null; }, setItem(key, value) { if (blockedStorage) throw Error('blocked'); store.set(key, value); } },
+    localStorage: { getItem(key) { if (blockedStorage) throw Error('blocked'); return store.get(key) ?? null; }, removeItem(key) { if (blockedStorage) throw Error('blocked'); store.delete(key); }, setItem(key, value) { if (blockedStorage) throw Error('blocked'); store.set(key, value); } },
     Image: class { set src(value) { this.path = value; queueMicrotask(() => failImage ? this.onerror() : this.onload()); } },
   };
   vm.createContext(sandbox);
@@ -370,6 +371,46 @@ test('shooting and dodging resolve enemies and final wave wins', async () => {
   g.run('start()');
   assert.equal(g.run('currLevel.id'),1);
   assert.equal(g.run('magicFeathers'),0);
+});
+test('checkpoint persists between levels and survives page reload without doubling resources', async () => {
+  const g=await game();
+  g.run('start(); score=100; arrowsLeft=7; magicFeathers=2; remainingTime=10; targets=[]; checkGameOver()');
+  const saved=g.store.get('bowArrow.checkpoint');
+  assert.equal(JSON.parse(saved).score,270);
+  const reloaded=await game({savedCheckpoint:saved});
+  assert.equal(reloaded.elements.continueButton.hidden,false);
+  reloaded.elements.continueButton.handlers.click();
+  assert.equal(reloaded.run('currLevel.id'),2);
+  assert.equal(reloaded.run('score'),270);
+  assert.equal(reloaded.run('arrowsLeft'),27);
+  assert.equal(reloaded.run('magicFeathers'),2);
+  assert.equal(reloaded.run('remainingTime'),75);
+  reloaded.run('arrowsLeft=0; arrows=[]; checkGameOver(); continueCheckpoint()');
+  assert.equal(reloaded.run('arrowsLeft'),27);
+  assert.equal(reloaded.run('score'),270);
+  assert.equal(reloaded.run('levelHits'),0);
+  assert.equal(reloaded.run('protectionTime'),0);
+});
+test('invalid checkpoints are ignored and unavailable storage keeps an in-memory retry', async () => {
+  for (const value of ['invalid', '{}', '{"version":1,"levelIndex":99,"score":0,"arrowsLeft":0,"magicFeathers":0}', '{"version":1,"levelIndex":1,"score":-1,"arrowsLeft":0,"magicFeathers":0}']) {
+    const g=await game({savedCheckpoint:value});
+    assert.equal(g.elements.continueButton.hidden,true);
+    g.run('continueCheckpoint()');
+    assert.equal(g.run('state'),'idle');
+  }
+  const g=await game({blockedStorage:true});
+  g.run('start(); targets=[]; checkGameOver(); nextLevel(); state="lost"; continueCheckpoint()');
+  assert.equal(g.run('currLevel.id'),2);
+  assert.equal(g.run('arrowsLeft'),40);
+});
+test('new checkpoints replace previous progress and final victory removes the save', async () => {
+  const g=await game();
+  g.run('start(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
+  assert.equal(JSON.parse(g.store.get('bowArrow.checkpoint')).levelIndex,2);
+  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
+  assert.equal(g.run('state'),'won');
+  assert.equal(g.run('checkpoint'),null);
+  assert.equal(g.store.has('bowArrow.checkpoint'),false);
 });
 (async () => {
   let failures=0;
