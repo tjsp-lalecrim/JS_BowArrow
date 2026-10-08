@@ -1,11 +1,14 @@
 const LEVELS = [
   { id: 1, description: 'Practice', targets: 15, arrow: 20, time: 60, speed: 60, spawnType: 'line', sway: 0, swayRate: 0, variedSpeed: false },
-  { id: 2, description: 'Drifting balloons', targets: 15, arrow: 20, time: 75, speed: 80, spawnType: 'random', sway: 10, swayRate: 1.0, variedSpeed: false },
+  { id: 2, description: 'Avoid the yellow balloons', targets: 15, friendlyTargets: 5, arrow: 20, time: 75, speed: 80, spawnType: 'random', sway: 10, swayRate: 1.0, variedSpeed: false },
   { id: 3, description: 'Butterflies in bubbles', targets: 15, arrow: 20, time: 75, speed: 75, spawnType: 'random', targetType: 'bubble', sway: 0, swayRate: 0, variedSpeed: true },
 ];
 const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
 const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
 const BUTTERFLY_FRAMES = ['butterfly_01', 'butterfly_02'];
+const BONUS_HITS = 10;
+const BONUS_POINTS = 100;
+const YELLOW_PENALTY = 10;
 const BUBBLE_SIZE = 32;
 const BUTTERFLY_SIZE = 18;
 const cnv = document.querySelector('#game-area');
@@ -14,7 +17,7 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
@@ -23,6 +26,9 @@ let currLevel = null;
 let arrows = [];
 let targets = [];
 let arrowsLeft = 0;
+let magicFeathers = 0;
+let levelHits = 0;
+let protectionTime = 0;
 let remainingTime = 0;
 
 let score = 0;
@@ -126,8 +132,9 @@ function updateInfo() {
   ui.level.textContent = 'Level: ' + (currLevel?.id ?? 0);
   ui.description.textContent = state === 'loading' ? 'Loading sprites...' : state === 'error' ? 'Sprites failed to load. Reload to retry.' : currLevel?.description ?? 'Press Start';
   ui.arrowLeft.textContent = 'Arrows Left: ' + arrowsLeft;
+  ui.magicFeathers.textContent = 'Magic Feathers: ' + magicFeathers;
   ui.timeLeft.textContent = 'Time Left: ' + Math.ceil(remainingTime) + 's';
-  ui.targetsLeft.textContent = 'Targets Left: ' + targets.filter(t => !t.hit).length;
+  ui.targetsLeft.textContent = 'Targets Left: ' + targets.filter(t => !t.hit && !t.friendly).length;
   ui.bowStatus.textContent = bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
   ui.startButton.disabled = state === 'loading' || state === 'error';
   ui.nextLevelButton.hidden = state !== 'transition';
@@ -141,18 +148,22 @@ function startLevel(index) {
   levelIndex = index;
   currLevel = LEVELS[index];
   remainingTime = currLevel.time;
-  arrowsLeft = currLevel.arrow;
+  arrowsLeft += currLevel.arrow;
+  levelHits = 0;
+  protectionTime = 0;
   arrows = [];
   targets = [];
 
   Object.assign(bow, { y: (HEIGHT - bow.h) / 2, empty: false, animationTime: null });
-  for (let i = 0; i < currLevel.targets; i++) {
+  for (let i = 0; i < currLevel.targets + (currLevel.friendlyTargets ?? 0); i++) {
     const bubble = currLevel.targetType === 'bubble';
     const w = bubble ? BUBBLE_SIZE : 25;
     const h = bubble ? BUBBLE_SIZE : 46;
-    const baseX = bubble ? 360 + i * 28 : WIDTH / 2 + i * 25;
+    const friendly = i >= currLevel.targets;
+    // Interleave friendly balloons between the red columns without changing hitboxes.
+    const baseX = bubble ? 360 + i * 28 : friendly ? 412 + (i - currLevel.targets) * 75 : WIDTH / 2 + i * 25;
     targets.push({
-      type: bubble ? 'bubble' : 'balloon', x: baseX, baseX, w, h,
+      friendly, type: bubble ? 'bubble' : 'balloon', x: baseX, baseX, w, h,
       y: bubble ? 16 + Math.random() * (HEIGHT - h - 32) : currLevel.spawnType === 'line' ? HEIGHT - h : Math.random() * (HEIGHT - h),
       direction: i % 2 === 0 ? -1 : 1, phase: i * 0.7, motionTime: 0,
       speed: currLevel.speed * (currLevel.variedSpeed ? 0.85 + 0.3 * i / Math.max(1, currLevel.targets - 1) : 1),
@@ -165,6 +176,8 @@ function start() {
   if (state === 'loading' || state === 'error') return;
   unlockAudio();
   score = 0;
+  arrowsLeft = 0;
+  magicFeathers = 0;
   startLevel(0);
   ui.startButton.textContent = 'Restart';
   cnv.focus({ preventScroll: true });
@@ -240,15 +253,46 @@ function finishLevel() {
 function checkGameOver() {
   if (state !== 'playing') return;
   // Hits count immediately: the last hit at the deadline wins, even during its pop animation.
-  if (targets.every(t => t.hit)) return finishLevel();
+  if (targets.every(t => t.hit || t.friendly)) return finishLevel();
   if (remainingTime <= 0 || (arrowsLeft <= 0 && arrows.length === 0)) {
     updateHighScore();
     setState('lost');
     playSound('lose');
   }
 }
+function registerTargetHit(t) {
+  t.hit = true;
+  t.popTime = 0;
+  if (t.friendly) {
+    score = Math.max(0, score - YELLOW_PENALTY);
+  } else {
+    score += 10;
+    arrowsLeft++;
+    levelHits++;
+    if (levelHits % BONUS_HITS === 0) {
+      score += BONUS_POINTS;
+      magicFeathers++;
+    }
+  }
+  playSound('hit');
+}
+// Enemy stages can call this once on contact/projectile collision.
+function receivePlayerHit() {
+  if (state !== 'playing' || protectionTime > 0) return false;
+  if (magicFeathers > 0) {
+    magicFeathers--;
+    protectionTime = 1;
+    updateInfo();
+    return true;
+  }
+  updateHighScore();
+  setState('lost');
+  playSound('lose');
+  return true;
+}
 function update(dt) {
   if (state !== 'playing') return;
+  protectionTime = Math.max(0, protectionTime - dt);
   remainingTime = Math.max(0, remainingTime - dt);
   if (remainingTime < 1e-9) remainingTime = 0;
   bow.y = Math.max(0, Math.min(HEIGHT - bow.h, bow.y + ((keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0)) * 300 * dt));
@@ -261,10 +305,7 @@ function update(dt) {
     a.x += 180 * dt;
     for (const t of targets) {
       if (!t.hit && targetCollision(a, t)) {
-        t.hit = true;
-        t.popTime = 0;
-        score += 10;
-        playSound('hit');
+        registerTargetHit(t);
       }
     }
   }
@@ -279,7 +320,10 @@ function drawSprite(name, obj) {
 }
 function renderTarget(t) {
   if (t.type !== 'bubble') {
+    ctx.save();
+    if (t.friendly) ctx.filter = 'sepia(1) saturate(5)';
     drawSprite(POP_FRAMES[t.hit ? Math.min(5, Math.floor(t.popTime / 0.075)) : 0], t);
+    ctx.restore();
     return;
   }
   ctx.save();

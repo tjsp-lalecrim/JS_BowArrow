@@ -98,9 +98,9 @@ test('collision covers lower balloon and scores each target once', async () => {
   const g = await game();
   assert.equal(g.run('collision({x:0,y:35,w:20,h:4},{x:10,y:0,w:25,h:46})'), true);
   g.run('start(); targets=[{x:100,y:100,w:25,h:46,hit:false,popTime:0}]; arrows=[{x:90,y:110,w:32,h:5}]; update(1/120); checkGameOver()');
-  assert.equal(g.run('score'), 810); // 10 hit + 600 time + 200 unused arrows.
+  assert.equal(g.run('score'), 820); // 10 hit + 600 time + 210 unused/rewarded arrows.
   g.run('checkGameOver()');
-  assert.equal(g.run('score'), 810);
+  assert.equal(g.run('score'), 820);
 });
 test('keyboard opposing keys and release work independently', async () => {
   const g = await game();
@@ -209,7 +209,7 @@ test('level 2 stays active while time, ammunition and targets remain', async () 
   assert.equal(g.run('state'), 'playing');
   assert.equal(g.run('levelIndex'), 1);
   assert.equal(g.run('arrowsLeft'), 20);
-  assert.equal(g.run('targets.length'), 15);
+  assert.equal(g.run('targets.length'), 20);
   assert.ok(Math.abs(g.run('remainingTime')-15)<1e-7);
   g.run('for(let i=0;i<15*120;i++) update(1/120)');
   assert.equal(g.run('state'), 'lost');
@@ -291,6 +291,46 @@ test('level 3 movement is consistent across refresh rates', async () => {
   }
   const a=await simulate(60), b=await simulate(144);
   for(let i=0;i<a.length;i++) assert.ok(Math.abs(a[i]-b[i])<1e-7);
+});
+test('yellow balloons penalize once without rewarding ammunition or blocking completion', async () => {
+  const g = await game();
+  g.run('startLevel(1)');
+  assert.equal(g.run('targets.filter(t=>t.friendly).length'), 5);
+  assert.equal(g.elements.targetsLeft.textContent, 'Targets Left: 15');
+  g.run('score=25; targets[15].x=100; targets[15].y=100; targets[15].speed=0; targets[15].baseX=100; arrows=[{x:90,y:110,w:32,h:5}]; update(1/120); update(1/120)');
+  assert.equal(g.run('score'), 15);
+  assert.equal(g.run('arrowsLeft'), 20);
+  assert.equal(g.run('levelHits'), 0);
+  assert.equal(g.run('magicFeathers'), 0);
+  g.run('targets.filter(t=>!t.friendly).forEach(t=>t.hit=true); checkGameOver()');
+  assert.equal(g.run('state'), 'transition');
+});
+test('valid hits return arrows and award feathers with each ten-hit bonus', async () => {
+  const g = await game();
+  g.run('start(); targets.slice(0,10).forEach(registerTargetHit); updateInfo()');
+  assert.equal(g.run('score'), 200);
+  assert.equal(g.run('arrowsLeft'), 30);
+  assert.equal(g.run('magicFeathers'), 1);
+  assert.equal(g.elements.magicFeathers.textContent, 'Magic Feathers: 1');
+  g.run('targets.forEach(t=>t.hit=true); checkGameOver(); nextLevel()');
+  assert.equal(g.run('arrowsLeft'), 50);
+  assert.equal(g.run('magicFeathers'), 1);
+  assert.equal(g.run('levelHits'), 0);
+  g.run('start()');
+  assert.equal(g.run('arrowsLeft'), 20);
+  assert.equal(g.run('magicFeathers'), 0);
+});
+test('feathers absorb damage once with paused invulnerability and defeat without stock', async () => {
+  const g = await game();
+  g.run('start(); magicFeathers=1; receivePlayerHit(); receivePlayerHit()');
+  assert.equal(g.run('magicFeathers'), 0);
+  assert.equal(g.run('state'), 'playing');
+  assert.equal(g.run('protectionTime'), 1);
+  g.run('pauseOrResume(); update(2); receivePlayerHit()');
+  assert.equal(g.run('protectionTime'), 1);
+  assert.equal(g.run('state'), 'paused');
+  g.run('pauseOrResume(); update(1); receivePlayerHit()');
+  assert.equal(g.run('state'), 'lost');
 });
 (async () => {
   let failures=0;

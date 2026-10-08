@@ -18,13 +18,13 @@ Open `index.html` in a modern browser. No dependencies or build step are require
 
 ## Gameplay improvements
 
-The practice level has straight-moving balloons. Level 2 allows 75 seconds, with balloons rising at 80 pixels per second and a gentle horizontal drift. Level 3 recreates the described butterfly-in-bubble scene: 15 bubbles move up and down in fixed columns, reverse direction at the edges and contain butterflies with animated wings. The final level allows 75 seconds and 20 arrows. Hitting a bubble fades its rim and releases the butterfly upward; each target scores once. Bubble collision uses the circular outline rather than transparent sprite corners.
+The practice level has straight-moving balloons. Level 2 allows 75 seconds, with balloons rising at 80 pixels per second and a gentle horizontal drift. Level 3 recreates the described butterfly-in-bubble scene: 15 bubbles move up and down in fixed columns, reverse direction at the edges and contain butterflies with animated wings. The third level allows 75 seconds and adds 20 arrows to the remaining stock. Hitting a bubble fades its rim and releases the butterfly upward; each target scores once. Bubble collision uses the circular outline rather than transparent sprite corners.
 
 Short synthesized effects signal shooting, reloading, hits, level completion, victory and defeat. Use Sound: On/Off to toggle them; the preference is saved when storage is available. Audio begins after a user action and is optional in browsers without Web Audio support.
 
 ## Rules
 
-Arrows can hit multiple balloons. Each balloon or butterfly bubble scores 10 points immediately on impact. Clearing a level adds 10 points per remaining second (rounded up) and per unused arrow. The last hit in the simulation step when time reaches zero wins; otherwise time expiry ends the level immediately. Running out of ammunition ends the game once all fired arrows have left the screen. Restart always begins a fresh game. High scores persist in browser storage when available.
+Arrows can hit multiple balloons. Each red balloon or butterfly bubble scores 10 points immediately on impact and returns one arrow. Level 2 includes 15 red and five yellow balloons: yellow balloons cost 10 points (minimum score zero), give no ammunition or bonuses, and do not need to be hit to complete the level. Clearing a level adds 10 points per remaining second (rounded up) and per unused arrow. The last hit in the simulation step when time reaches zero wins; otherwise time expiry ends the level immediately. Running out of ammunition ends the game once all fired arrows have left the screen. Unused arrows and magic feathers carry between levels; each level supplies 20 additional arrows. Every ten valid hits within a level award 100 bonus points and one magic feather. Restart resets ammunition, feathers and bonus progress. These quantities are adaptation balance choices, not verified original values. Magic feathers absorb an enemy hit and give one second of protection; the three current stages have no enemies, so feathers are retained for future enemy stages. High scores persist in browser storage when available.
 
 The game preloads sprites and uses a fixed simulation step for consistent movement across display refresh rates. Pausing freezes the clock and animations. Clearing a level displays a completion screen and waits for Next Level. This preserves the score and remaining resources on screen until you continue; Restart explicitly begins a new game.
 
@@ -32,7 +32,7 @@ The game preloads sprites and uses a fixed simulation step for consistent moveme
 
 Sprites retain their original dimensions and exact transparency masks: bow frames 64x64, balloons 25x46, arrow 32x5. Refined colors improve contrast while preserving pixel art and animation alignment. Rendering uses native sprite sizes; arrow collision matches its visible 32x5 rectangle. Originals, generation prompts and a comparison image are preserved under `images/originals` and `images/source-art`.
 
-The third level adds a 32x32 bubble and two 18x18 butterfly wing frames. Their generated sources, exact prompts and visual preview are under `images/source-art` (see `bubble-prompts.md`). The first two levels keep their existing sprites. On Windows, run `./tests/sprites.test.ps1` to verify the 13 original sprites plus the dimensions and transparency of the three new assets.
+The third level adds a 32x32 bubble and two 18x18 butterfly wing frames. Their generated sources, exact prompts and visual preview are under `images/source-art` (see `bubble-prompts.md`). Yellow balloons use a canvas color filter on all existing balloon animation frames, preserving native dimensions, transparency and collision geometry. On Windows, run `./tests/sprites.test.ps1` to verify the 13 original sprites plus the dimensions and transparency of the three new assets.
 
 ## Verification
 
@@ -44,3 +44,9 @@ node tests/game.test.js
 ```
 
 Regression tests use simulated canvas, input, image loading, storage and animation frames. They cover pause, restart, deadline rules, scores, collision, responsive pointer coordinates and refresh-rate independence. They do not replace visual testing in a browser.
+
+## Original-game reference
+
+The original help file describes carrying unused arrows forward, awarding arrows for targets, and granting protective magic feathers alongside target bonuses. The thresholds and quantities above are explicit adaptation choices. Timers remain part of this adaptation.
+
+Visual verification of stage 3 remains pending: the [original-game walkthrough](https://www.youtube.com/watch?v=dcv-XKmUPjo) could not be accessed because the organization network blocks video streaming. The current vertical-only movement has therefore been retained; it must not be described as visually verified against the original.
