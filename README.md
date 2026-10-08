@@ -92,3 +92,5 @@ Drag sensitivity cycles through Normal (1x), Fast (1.5x), and Slow (0.65x) using
 The Options menu groups sound, control side and drag sensitivity to reduce toolbar height on mobile. Opening it during play pauses the game. Closing it leaves the game paused; Resume closes the menu and continues. Escape closes the menu with keyboard focus restored to Options. The native details/summary control supports keyboard interaction.
 
 Native full screen requests landscape orientation through Screen Orientation API and releases the lock when leaving fullscreen. Browsers that do not support orientation locking keep fullscreen usable and display the portrait rotation hint; rotate the device manually there. The game retains its 800x600 simulation and 4:3 picture.
+
+On coarse-pointer devices, Resume displays a three-second countdown before gameplay restarts. Stage time, enemies, animations and ammunition remain frozen during the countdown. Pause, opening Options or leaving the tab cancels it; the next Resume starts again at three. Desktop resume remains immediate.

@@ -704,6 +704,33 @@ test('denied landscape lock preserves fullscreen and unsupported API remains usa
   assert.equal(g.run('immersive'),true);
   assert.equal(g.run('landscapeLocked'),false);
 });
+test('mobile resume counts three seconds while freezing enemies, clock and shots', async () => {
+  const g=await game();
+  g.run('startLevel(5); window.matchMedia=()=>({matches:true}); pauseOrResume(); pauseOrResume()');
+  const before=g.run('JSON.stringify(targets)');
+  assert.equal(g.run('state'),'countdown');
+  assert.equal(g.elements.shootButton.disabled,true);
+  g.run('shootOrReload(); for(let i=0;i<360;i++) update(1/120)');
+  assert.equal(g.run('state'),'playing');
+  assert.equal(g.run('remainingTime'),90);
+  assert.equal(g.run('arrowsLeft'),20);
+  assert.equal(g.run('JSON.stringify(targets)'),before);
+  g.run('update(1/120)');
+  assert.ok(g.run('remainingTime<90'));
+});
+test('mobile countdown can be paused or interrupted by options and restart', async () => {
+  const g=await game();
+  g.run('start(); window.matchMedia=()=>({matches:true}); pauseOrResume(); pauseOrResume(); update(1); pauseOrResume()');
+  assert.equal(g.run('state'),'paused');
+  g.run('pauseOrResume()');
+  assert.equal(g.run('resumeCountdown'),3);
+  g.elements.settingsMenu.open=true;
+  g.elements.settingsMenu.handlers.toggle();
+  assert.equal(g.run('state'),'paused');
+  g.run('pauseOrResume(); start()');
+  assert.equal(g.run('state'),'ready');
+  assert.equal(g.run('resumeCountdown'),0);
+});
 (async () => {
   let failures=0;
   for (const {name,fn} of tests) {

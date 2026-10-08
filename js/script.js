@@ -26,6 +26,7 @@ const images = new Map();
 const keys = new Set();
 let state = 'loading';
 let immersive = false;
+let resumeCountdown = 0;
 let landscapeLocked = false;
 let movementPointer = null;
 let suppressShootClick = false;
@@ -184,6 +185,7 @@ function resetClock() {
 function setState(next) {
   stopSounds();
   state = next;
+  if (next !== 'countdown') resumeCountdown = 0;
   movementPointer = null;
   keys.clear();
   resetClock();
@@ -211,7 +213,7 @@ function updateInfo() {
   ui.continueButton.textContent = checkpoint ? 'Continue — Level ' + LEVELS[checkpoint.levelIndex].id : 'Continue';
   ui.nextLevelButton.hidden = state !== 'transition';
   ui.nextLevelButton.disabled = state !== 'transition';
-  ui.pauseButton.hidden = state !== 'playing' && state !== 'paused';
+  ui.pauseButton.hidden = !['playing', 'paused', 'countdown'].includes(state);
   ui.pauseButton.textContent = state === 'paused' ? 'Resume' : 'Pause';
   ui.shootButton.disabled = state !== 'playing' || arrowsLeft <= 0 || remainingTime <= 0;
   ui.shootButton.textContent = bow.empty ? 'Reload' : 'Shoot';
@@ -277,10 +279,15 @@ function start() {
   focusGame();
 }
 function pauseOrResume() {
-  if (state !== 'playing' && state !== 'paused') return;
+  if (!['playing', 'paused', 'countdown'].includes(state)) return;
   unlockAudio();
   if (state === 'paused') ui.settingsMenu.open = false;
-  setState(state === 'playing' ? 'paused' : 'playing');
+  if (state === 'paused' && window.matchMedia?.('(pointer: coarse)')?.matches) {
+    resumeCountdown = 3;
+    setState('countdown');
+  } else {
+    setState(state === 'paused' ? 'playing' : 'paused');
+  }
   focusGame();
 }
 function collision(a, b) {
@@ -416,6 +423,11 @@ function receivePlayerHit() {
   return true;
 }
 function update(dt) {
+  if (state === 'countdown') {
+    resumeCountdown = Math.max(0, resumeCountdown - dt);
+    if (resumeCountdown < 1e-9) setState('playing');
+    return;
+  }
   if (state !== 'playing') return;
   feedbackTime = Math.max(0, feedbackTime - dt);
   protectionTime = Math.max(0, protectionTime - dt);
@@ -533,7 +545,7 @@ function render() {
   arrows.forEach(a => drawSprite('arrow', a));
   targets.forEach(renderTarget);
   if (dove && !dove.hit) drawSprite('dove', dove);
-  const message = { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Level ' + currLevel?.id + ' complete!', lost: 'Game Over', won: 'You win!' }[state];
+  const message = state === 'countdown' ? 'Ready: ' + Math.max(1, Math.ceil(resumeCountdown)) : { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Level ' + currLevel?.id + ' complete!', lost: 'Game Over', won: 'You win!' }[state];
   if (message) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -614,11 +626,11 @@ cnv.addEventListener('keyup', event => {
 });
 cnv.addEventListener('blur', () => keys.clear());
 window.addEventListener('blur', () => {
-  if (state === 'playing') setState('paused');
+  if (state === 'playing' || state === 'countdown') setState('paused');
   keys.clear();
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && state === 'playing') setState('paused');
+  if (document.hidden && ['playing', 'countdown'].includes(state)) setState('paused');
   resetClock();
 });
 function nextLevel() {
@@ -704,7 +716,7 @@ ui.beginButton.addEventListener('click', () => {
 });
 updateHandPreference();
 ui.settingsMenu.addEventListener('toggle', () => {
-  if (ui.settingsMenu.open && state === 'playing') setState('paused');
+  if (ui.settingsMenu.open && ['playing', 'countdown'].includes(state)) setState('paused');
 });
 ui.settingsMenu.addEventListener('keydown', event => {
   if (event.code !== 'Escape' || !ui.settingsMenu.open) return;
