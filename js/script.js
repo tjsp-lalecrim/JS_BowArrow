@@ -26,6 +26,7 @@ const images = new Map();
 const keys = new Set();
 let state = 'loading';
 let immersive = false;
+let landscapeLocked = false;
 let movementPointer = null;
 let suppressShootClick = false;
 let feedbackTime = 0;
@@ -631,22 +632,38 @@ function updateFullscreen() {
   ui.fullscreenButton.textContent = immersive ? 'Exit Full Screen' : 'Full Screen';
   ui.fullscreenButton.setAttribute('aria-pressed', String(immersive));
 }
+async function lockLandscape() {
+  const orientation = window.screen?.orientation;
+  if (!document.fullscreenElement || !orientation?.lock) return;
+  try {
+    await orientation.lock('landscape');
+    landscapeLocked = true;
+  } catch { /* Some mobile browsers require rotating the device manually. */ }
+}
+function unlockLandscape() {
+  if (!landscapeLocked) return;
+  try { window.screen?.orientation?.unlock?.(); } catch { /* Optional browser API. */ }
+  landscapeLocked = false;
+}
 async function toggleFullscreen() {
   if (immersive) {
     if (document.fullscreenElement && document.exitFullscreen) {
       try { await document.exitFullscreen(); } catch { return; }
     }
+    unlockLandscape();
     immersive = false;
   } else {
     if (document.documentElement?.requestFullscreen) {
       try { await document.documentElement.requestFullscreen(); } catch { /* Use viewport mode when native fullscreen is unavailable. */ }
     }
     immersive = true;
+    await lockLandscape();
   }
   updateFullscreen();
 }
 document.addEventListener('fullscreenchange', () => {
   immersive = Boolean(document.fullscreenElement);
+  if (!immersive) unlockLandscape();
   updateFullscreen();
 });
 ui.fullscreenButton.addEventListener('click', toggleFullscreen);

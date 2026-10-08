@@ -687,6 +687,23 @@ test('options leave initial and terminal states intact and restart closes them',
   g.run('start()');
   assert.equal(g.elements.settingsMenu.open,false);
 });
+test('native fullscreen requests landscape and releases orientation on exit', async () => {
+  const g=await game();
+  g.run("document.documentElement={classList:{toggle(){}},requestFullscreen:async()=>{document.fullscreenElement=document.documentElement}}; document.exitFullscreen=async()=>{document.fullscreenElement=null}; window.screen={orientation:{lock:async(value)=>{window.lockRequested=value},unlock:()=>{window.unlocked=true}}}");
+  await g.run('toggleFullscreen()');
+  assert.equal(g.run('window.lockRequested'),'landscape');
+  assert.equal(g.run('landscapeLocked'),true);
+  await g.run('toggleFullscreen()');
+  assert.equal(g.run('window.unlocked'),true);
+  assert.equal(g.run('landscapeLocked'),false);
+});
+test('denied landscape lock preserves fullscreen and unsupported API remains usable', async () => {
+  const g=await game();
+  g.run("document.documentElement={classList:{toggle(){}},requestFullscreen:async()=>{document.fullscreenElement=document.documentElement}}; window.screen={orientation:{lock:async()=>{throw Error('unsupported')}}}");
+  await g.run('toggleFullscreen()');
+  assert.equal(g.run('immersive'),true);
+  assert.equal(g.run('landscapeLocked'),false);
+});
 (async () => {
   let failures=0;
   for (const {name,fn} of tests) {
