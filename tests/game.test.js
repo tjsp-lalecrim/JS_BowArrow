@@ -29,7 +29,7 @@ test('initial screen and preload failure', async () => {
   const g = await game();
   assert.equal(g.run('state'), 'idle');
   assert.equal(g.elements.level.textContent, 'Level: 0');
-  assert.equal(g.run('images.size'), 17);
+  assert.equal(g.run('images.size'), 18);
   const failed = await game({ failImage: true });
   assert.equal(failed.run('state'), 'error');
   assert.equal(failed.elements.startButton.disabled, true);
@@ -68,7 +68,7 @@ test('deadline loses even with arrows in flight', async () => {
 });
 test('last hit wins before pop finishes and final bonus persists', async () => {
   const g = await game();
-  g.run('startLevel(2); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
+  g.run('startLevel(3); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
   assert.equal(g.run('state'), 'won');
   assert.equal(g.run('score'), 220);
   assert.equal(g.elements.score.textContent, 'Score: 220');
@@ -331,6 +331,45 @@ test('feathers absorb damage once with paused invulnerability and defeat without
   assert.equal(g.run('state'), 'paused');
   g.run('pauseOrResume(); update(1); receivePlayerHit()');
   assert.equal(g.run('state'), 'lost');
+});
+test('level 3 now advances to the swamp with accumulated supplies', async () => {
+  const g=await game();
+  g.run('startLevel(2); arrowsLeft=7; magicFeathers=2; targets.forEach(t=>t.hit=true); checkGameOver()');
+  assert.equal(g.run('state'), 'transition');
+  g.run('nextLevel()');
+  assert.equal(g.run('currLevel.id'),4);
+  assert.equal(g.run('arrowsLeft'),27);
+  assert.equal(g.run('magicFeathers'),2);
+  assert.equal(g.run('remainingTime'),90);
+  assert.equal(g.run('targets.length'),12);
+  assert.ok(g.run("targets.every(t=>t.type==='slime' && t.w===32 && t.h===24)"));
+});
+test('slime motion pauses and enemy contact consumes a feather or defeats the player', async () => {
+  const g=await game();
+  g.run('startLevel(3); targets[0].x=200; update(1)');
+  assert.equal(g.run('targets[0].x'),145);
+  g.run('pauseOrResume(); update(2)');
+  assert.equal(g.run('targets[0].x'),145);
+  g.run('pauseOrResume(); magicFeathers=1; targets[0].x=60; targets[0].y=bow.y+20; update(1/120)');
+  assert.equal(g.run('magicFeathers'),0);
+  assert.equal(g.run('state'),'playing');
+  assert.equal(g.run('score'),0);
+  g.run('protectionTime=0; targets[1].x=60; targets[1].y=bow.y+20; update(1/120)');
+  assert.equal(g.run('state'),'lost');
+});
+test('shooting and dodging resolve enemies and final wave wins', async () => {
+  const g=await game();
+  g.run('startLevel(3); targets[0].x=100; targets[0].y=100; arrows=[{x:90,y:110,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('score'),10);
+  assert.equal(g.run('arrowsLeft'),21);
+  g.run('targets[1].x=-33; targets[1].y=0; update(1/120)');
+  assert.equal(g.run('targets[1].hit'),true);
+  assert.equal(g.run('score'),10);
+  g.run('targets.forEach(t=>t.hit=true); checkGameOver()');
+  assert.equal(g.run('state'),'won');
+  g.run('start()');
+  assert.equal(g.run('currLevel.id'),1);
+  assert.equal(g.run('magicFeathers'),0);
 });
 (async () => {
   let failures=0;

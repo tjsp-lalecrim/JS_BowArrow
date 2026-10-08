@@ -1,0 +1,4 @@
+Created with built-in ImageGen. Runtime sprite: images/slime.png (32x24). Rebuild with scripts/build-slime-sprite.ps1.
+
+Exact prompt:
+Use case: stylized-concept. Asset type: transparent sprite for retro Windows 95 pixel-art archery game. Single hostile swamp slime creature, side view facing LEFT, squat green gelatinous mound, dark olive outline, lime highlights, two small amber eyes and tiny dark mouth. Readable at 32x24 pixels, crisp pixel art, minimal details, no weapons or limbs. Whole creature centered, genuinely transparent background, no ground, shadows, text or other objects. Enlarged pixel-art sprite.
