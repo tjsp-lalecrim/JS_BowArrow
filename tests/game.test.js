@@ -731,6 +731,31 @@ test('mobile countdown can be paused or interrupted by options and restart', asy
   assert.equal(g.run('state'),'ready');
   assert.equal(g.run('resumeCountdown'),0);
 });
+test('screen wake lock is requested only during fullscreen play and releases on pause', async () => {
+  const g=await game();
+  g.run("window.navigator={wakeLock:{request:async(type)=>{window.requestedWake=type; return {release:async()=>{window.wakeReleased=true},addEventListener(){}}}}}; start()");
+  await g.run('syncScreenWakeLock()');
+  assert.equal(g.run('screenWakeLock'),null);
+  g.run('immersive=true');
+  await g.run('syncScreenWakeLock()');
+  assert.equal(g.run('window.requestedWake'),'screen');
+  assert.equal(g.elements.wakeStatus.textContent,'Screen awake: active');
+  g.run('pauseOrResume()');
+  assert.equal(g.run('screenWakeLock'),null);
+  assert.equal(g.run('window.wakeReleased'),true);
+});
+test('pending wake request is released if play ends before acquisition; denied API is harmless', async () => {
+  const g=await game();
+  g.run("window.navigator={wakeLock:{request:()=>new Promise(resolve=>window.resolveWake=resolve)}}; start(); immersive=true; window.pendingWake=syncScreenWakeLock(); setState('lost'); window.resolveWake({release:async()=>{window.wakeReleased=true},addEventListener(){}})");
+  await g.run('window.pendingWake');
+  assert.equal(g.run('screenWakeLock'),null);
+  assert.equal(g.run('window.wakeReleased'),true);
+  g.run("window.navigator.wakeLock.request=async()=>{throw Error('denied')}; start()");
+  await g.run('syncScreenWakeLock()');
+  assert.equal(g.run('state'),'playing');
+  assert.equal(g.run('screenWakeLock'),null);
+  assert.equal(g.elements.wakeStatus.textContent,'Screen awake: unavailable');
+});
 (async () => {
   let failures=0;
   for (const {name,fn} of tests) {

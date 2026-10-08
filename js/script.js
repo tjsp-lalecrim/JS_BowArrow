@@ -21,13 +21,15 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton', 'sensitivityButton', 'settingsMenu', 'settingsSummary'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton', 'sensitivityButton', 'settingsMenu', 'settingsSummary', 'wakeStatus'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
 let immersive = false;
 let resumeCountdown = 0;
 let landscapeLocked = false;
+let screenWakeLock = null;
+let wakeRequestPending = false;
 let movementPointer = null;
 let suppressShootClick = false;
 let feedbackTime = 0;
@@ -190,6 +192,7 @@ function setState(next) {
   keys.clear();
   resetClock();
   updateInfo();
+  syncScreenWakeLock();
 }
 function updateInfo() {
   ui.soundButton.textContent = soundEnabled ? 'Sound: On' : 'Sound: Off';
@@ -639,10 +642,42 @@ function nextLevel() {
   startLevel(levelIndex + 1);
   focusGame();
 }
+function needsScreenAwake() {
+  return immersive && !document.hidden && ['playing', 'countdown'].includes(state);
+}
+async function syncScreenWakeLock() {
+  if (!needsScreenAwake()) {
+    const previous = screenWakeLock;
+    screenWakeLock = null;
+    ui.wakeStatus.textContent = 'Screen awake: inactive';
+    if (previous) { try { await previous.release(); } catch { /* Optional API. */ } }
+    return;
+  }
+  const api = window.navigator?.wakeLock;
+  if (!api?.request) { ui.wakeStatus.textContent = 'Screen awake: unavailable'; return; }
+  if (screenWakeLock || wakeRequestPending) return;
+  wakeRequestPending = true;
+  try {
+    const lock = await api.request('screen');
+    if (!needsScreenAwake()) {
+      await lock.release();
+      return;
+    }
+    screenWakeLock = lock;
+    ui.wakeStatus.textContent = 'Screen awake: active';
+    lock.addEventListener('release', () => {
+      if (screenWakeLock !== lock) return;
+      screenWakeLock = null;
+      ui.wakeStatus.textContent = 'Screen awake: inactive';
+    });
+  } catch { ui.wakeStatus.textContent = 'Screen awake: unavailable'; }
+  finally { wakeRequestPending = false; }
+}
 function updateFullscreen() {
   document.documentElement?.classList.toggle('immersive', immersive);
   ui.fullscreenButton.textContent = immersive ? 'Exit Full Screen' : 'Full Screen';
   ui.fullscreenButton.setAttribute('aria-pressed', String(immersive));
+  syncScreenWakeLock();
 }
 async function lockLandscape() {
   const orientation = window.screen?.orientation;
