@@ -30,7 +30,7 @@ test('initial screen and preload failure', async () => {
   const g = await game();
   assert.equal(g.run('state'), 'idle');
   assert.equal(g.elements.level.textContent, 'Level: 0');
-  assert.equal(g.run('images.size'), 19);
+  assert.equal(g.run('images.size'), 20);
   const failed = await game({ failImage: true });
   assert.equal(failed.run('state'), 'error');
   assert.equal(failed.elements.startButton.disabled, true);
@@ -69,7 +69,7 @@ test('deadline loses even with arrows in flight', async () => {
 });
 test('last hit wins before pop finishes and final bonus persists', async () => {
   const g = await game();
-  g.run('startLevel(4); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
+  g.run('startLevel(5); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
   assert.equal(g.run('state'), 'won');
   assert.equal(g.run('score'), 220);
   assert.equal(g.elements.score.textContent, 'Score: 220');
@@ -409,7 +409,7 @@ test('new checkpoints replace previous progress and final victory removes the sa
   const g=await game();
   g.run('start(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
   assert.equal(JSON.parse(g.store.get('bowArrow.checkpoint')).levelIndex,2);
-  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
+  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
   assert.equal(g.run('state'),'won');
   assert.equal(g.run('checkpoint'),null);
   assert.equal(g.store.has('bowArrow.checkpoint'),false);
@@ -426,7 +426,7 @@ test('bullseye moves vertically, reflects at edges and freezes on pause', async 
   g.run('update(2)');
   assert.equal(g.run('targets[0].y'),y);
 });
-test('outer rings absorb arrows without reward and gold center wins', async () => {
+test('outer rings absorb arrows without reward and gold center advances', async () => {
   const g=await game();
   g.run('startLevel(4); targets[0].speed=0; arrowsLeft=3; arrows=[{x:672,y:280,w:32,h:5}]; update(1/120)');
   assert.equal(g.run('arrows.length'),0);
@@ -435,9 +435,9 @@ test('outer rings absorb arrows without reward and gold center wins', async () =
   assert.equal(g.run('state'),'playing');
   // Evaluate a centered shot at first contact with the disk, before it reaches the gold ring.
   g.run('arrows=[{x:669,y:298,w:32,h:5}]; update(1/120)');
-  assert.equal(g.run('state'),'won');
+  assert.equal(g.run('state'),'transition');
   assert.equal(g.run('arrowsLeft'),4);
-  assert.equal(g.run('checkpoint'),null);
+  assert.equal(g.run('checkpoint.levelIndex'),5);
 });
 test('bullseye deadline and last missed arrow lose; checkpoint restores stage 5', async () => {
   const g=await game();
@@ -454,6 +454,38 @@ test('tilted target collision ignores transparent side margins', async () => {
   const g=await game();
   assert.equal(g.run('targetDiskCollision({x:685,y:298,w:2,h:5},{x:680,y:260,w:80,h:80})'),false);
   assert.equal(g.run('targetDiskCollision({x:701,y:298,w:2,h:5},{x:680,y:260,w:80,h:80})'),true);
+});
+test('fireballs advance left, pause, reward hits and activate feather protection', async () => {
+  const g=await game();
+  g.run('startLevel(5); targets[0].x=400; targets[0].y=100; update(1)');
+  assert.equal(g.run('targets[0].x'),305);
+  assert.equal(g.run('targets[0].y'),100);
+  g.run('pauseOrResume(); update(2)');
+  assert.equal(g.run('targets[0].x'),305);
+  g.run('pauseOrResume(); targets[0].x=100; arrows=[{x:90,y:110,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('score'),10);
+  assert.equal(g.run('arrowsLeft'),21);
+  g.run('magicFeathers=1; targets[1].x=60; targets[1].y=bow.y+20; update(1/120)');
+  assert.equal(g.run('magicFeathers'),0);
+  assert.equal(g.run('state'),'playing');
+  g.run('protectionTime=0; targets[2].x=60; targets[2].y=bow.y+20; update(1/120)');
+  assert.equal(g.run('state'),'lost');
+});
+test('phase 6 checkpoint restores supplies and final completion clears it', async () => {
+  const g=await game();
+  g.run('startLevel(4); arrowsLeft=6; magicFeathers=2; targets=[]; checkGameOver(); nextLevel()');
+  assert.equal(g.run('currLevel.id'),6);
+  assert.equal(g.run('targets.length'),18);
+  assert.equal(g.run('arrowsLeft'),26);
+  g.run('remainingTime=0; checkGameOver(); continueCheckpoint()');
+  assert.equal(g.run('remainingTime'),90);
+  assert.equal(g.run('arrowsLeft'),26);
+  assert.equal(g.run('magicFeathers'),2);
+  g.run('targets[0].x=-41; targets[0].y=0; update(1/120)');
+  assert.equal(g.run('targets[0].hit'),true);
+  g.run('targets.forEach(t=>t.hit=true); checkGameOver()');
+  assert.equal(g.run('state'),'won');
+  assert.equal(g.run('checkpoint'),null);
 });
 (async () => {
   let failures=0;

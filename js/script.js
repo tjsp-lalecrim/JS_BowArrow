@@ -4,6 +4,7 @@ const LEVELS = [
   { id: 3, description: 'Butterflies in bubbles', targets: 15, arrow: 20, time: 75, speed: 75, spawnType: 'random', targetType: 'bubble', sway: 0, swayRate: 0, variedSpeed: true },
   { id: 4, description: 'SLIMED — survive the swamp', targets: 12, arrow: 20, time: 90, speed: 55, targetType: 'slime' },
   { id: 5, description: 'Bulls Eye — hit the gold center', targets: 1, arrow: 20, time: 75, speed: 70, targetType: 'bullseye' },
+  { id: 6, description: 'FIREBALLS — shoot or dodge the lava rocks', targets: 18, arrow: 20, time: 90, speed: 95, targetType: 'fireball' },
 ];
 const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
 const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
@@ -195,6 +196,10 @@ function startLevel(index) {
       targets.push({ type: 'bullseye', x: 680, y: 260, w: 80, h: 80, speed: currLevel.speed, direction: -1, motionTime: 0, hit: false, popTime: 0, missTime: 0 });
       continue;
     }
+    if (currLevel.targetType === 'fireball') {
+      targets.push({ type: 'fireball', x: WIDTH + i * 120, y: 24 + Math.random() * (HEIGHT - 72), w: 40, h: 24, speed: currLevel.speed + (i % 3) * 10, motionTime: 0, hit: false, popTime: 0 });
+      continue;
+    }
     if (currLevel.targetType === 'slime') {
       targets.push({ type: 'slime', x: WIDTH + i * 100, y: 24 + Math.random() * (HEIGHT - 72), w: 32, h: 24, speed: currLevel.speed + (i % 3) * 5, motionTime: 0, hit: false, popTime: 0 });
       continue;
@@ -271,7 +276,7 @@ function circleCollision(box, cx, cy, radius) {
 }
 function updateTargetMotion(t, dt) {
   t.motionTime = (t.motionTime ?? 0) + dt;
-  if (t.type === 'slime') { t.x -= t.speed * dt; return; }
+  if (t.type === 'slime' || t.type === 'fireball') { t.x -= t.speed * dt; return; }
   if (t.type === 'bullseye') t.missTime = Math.max(0, t.missTime - dt);
   if (t.type === 'bubble' || t.type === 'bullseye') {
     const top = 16;
@@ -385,7 +390,7 @@ function update(dt) {
   }
   // Resolve enemy contact after arrow hits so a successful shot prevents damage.
   for (const t of targets) {
-    if (t.type !== 'slime' || t.hit) continue;
+    if (!['slime', 'fireball'].includes(t.type) || t.hit) continue;
     if (collision(t, bow)) {
       t.hit = true;
       t.popTime = 0;
@@ -415,10 +420,10 @@ function renderTarget(t) {
     ctx.restore();
     return;
   }
-  if (t.type === 'slime') {
+  if (t.type === 'slime' || t.type === 'fireball') {
     ctx.save();
     ctx.globalAlpha = t.hit ? Math.max(0, 1 - t.popTime / 0.45) : 1;
-    drawSprite('slime', t);
+    drawSprite(t.type, t);
     ctx.restore();
     return;
   }
@@ -445,7 +450,7 @@ function renderTarget(t) {
 }
 function render() {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
-  ctx.fillStyle = currLevel?.targetType === 'slime' ? '#314b32' : 'green';
+  ctx.fillStyle = currLevel?.targetType === 'fireball' ? '#493b32' : currLevel?.targetType === 'slime' ? '#314b32' : 'green';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
   const bowFrame = bow.animationTime === null ? 0 : Math.min(5, 1 + Math.floor((bow.animationTime + 1e-9) / 0.1));
   ctx.save();
@@ -531,7 +536,7 @@ ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);
 ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });
 function preloadSprites() {
-  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target'])].map(name => new Promise((resolve, reject) => {
+  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target', 'fireball'])].map(name => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => { images.set(name, img); resolve(); };
     img.onerror = () => reject(new Error('Unable to load ' + name));

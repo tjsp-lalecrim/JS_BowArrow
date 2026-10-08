@@ -1,0 +1,4 @@
+Built-in ImageGen. Runtime: images/fireball.png, 40x24. Orientation visually verified: rock on LEFT, flame tail on RIGHT, toward the archer.
+
+Exact prompt:
+Use case: stylized-concept. Asset type: transparent animated-game fireball sprite, retro Windows 95 pixel art. Single flaming lava rock traveling horizontally LEFT toward an archer. Dark charcoal round rocky head at LEFT, glowing orange molten cracks, bright yellow-orange flames flowing BEHIND to the RIGHT, tapering into a short jagged tail. Orientation absolutely leftward: leading rock on left, trailing flame on right. Crisp readable pixel art at logical 40x24, entire sprite centered, small limited palette, transparent background. No character, face, text, ground, shadows or other objects. Enlarged pixel art.
