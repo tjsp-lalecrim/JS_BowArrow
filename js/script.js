@@ -1,7 +1,7 @@
 const LEVELS = [
-  { id: 1, description: 'Practice', targets: 15, arrow: 20, time: 60, speed: 60, spawnType: 'line' },
-  { id: 2, description: 'More balloons', targets: 15, arrow: 20, time: 45, speed: 120, spawnType: 'random' },
-  { id: 3, description: 'Final level', targets: 15, arrow: 15, time: 30, speed: 180, spawnType: 'random' },
+  { id: 1, description: 'Practice', targets: 15, arrow: 20, time: 60, speed: 60, spawnType: 'line', sway: 0, swayRate: 0, variedSpeed: false },
+  { id: 2, description: 'Drifting balloons', targets: 15, arrow: 20, time: 45, speed: 120, spawnType: 'random', sway: 10, swayRate: 1.6, variedSpeed: false },
+  { id: 3, description: 'Changing winds', targets: 15, arrow: 15, time: 30, speed: 180, spawnType: 'random', sway: 18, swayRate: 2.4, variedSpeed: true },
 ];
 const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
 const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
@@ -10,7 +10,7 @@ const ctx = cnv.getContext('2d');
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
@@ -38,17 +38,85 @@ function updateHighScore() {
   highScore = score;
   try { localStorage.setItem('bowArrow.highScore', String(highScore)); } catch { /* Storage may be unavailable. */ }
 }
+// Short synthesized effects keep the game self-contained. Audio starts only after a user gesture.
+let soundEnabled = readSoundPreference();
+let audioContext = null;
+let audioGain = null;
+const activeSounds = new Set();
+function readSoundPreference() {
+  try { return localStorage.getItem('bowArrow.sound') !== 'off'; } catch { return true; }
+}
+function unlockAudio() {
+  if (!soundEnabled) return;
+  try {
+    const Audio = window.AudioContext || window.webkitAudioContext;
+    if (!Audio) return;
+    if (!audioContext) {
+      audioContext = new Audio();
+      audioGain = audioContext.createGain();
+      audioGain.gain.value = 0.12;
+      audioGain.connect(audioContext.destination);
+    }
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+  } catch { /* Audio support is optional. */ }
+}
+function stopSounds() {
+  for (const oscillator of activeSounds) {
+    try { oscillator.stop(); } catch { /* Already stopped. */ }
+    oscillator.disconnect();
+  }
+  activeSounds.clear();
+}
+function playSound(effect) {
+  if (!soundEnabled || !audioContext || audioContext.state !== 'running') return;
+  const notes = {
+    shoot: [[520, 140, 0.12, 0]], reload: [[200, 420, 0.08, 0]], hit: [[900, 180, 0.09, 0]],
+    level: [[440, 440, 0.12, 0], [660, 660, 0.18, 0.14]],
+    win: [[440, 440, 0.12, 0], [554, 554, 0.12, 0.14], [660, 660, 0.24, 0.28]],
+    lose: [[300, 100, 0.3, 0]],
+  }[effect];
+  if (!notes) return;
+  try {
+    for (const [from, to, duration, delay] of notes) {
+      const oscillator = audioContext.createOscillator();
+      const envelope = audioContext.createGain();
+      const time = audioContext.currentTime + delay;
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(from, time);
+      oscillator.frequency.exponentialRampToValueAtTime(to, time + duration);
+      envelope.gain.setValueAtTime(0.001, time);
+      envelope.gain.exponentialRampToValueAtTime(0.6, time + 0.01);
+      envelope.gain.exponentialRampToValueAtTime(0.001, time + duration);
+      oscillator.connect(envelope);
+      envelope.connect(audioGain);
+      activeSounds.add(oscillator);
+      oscillator.onended = () => { activeSounds.delete(oscillator); oscillator.disconnect(); envelope.disconnect(); };
+      oscillator.start(time);
+      oscillator.stop(time + duration);
+    }
+  } catch { /* A failed effect must not interrupt gameplay. */ }
+}
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  if (!soundEnabled) stopSounds();
+  else unlockAudio();
+  try { localStorage.setItem('bowArrow.sound', soundEnabled ? 'on' : 'off'); } catch { /* Storage is optional. */ }
+  updateInfo();
+}
 function resetClock() {
   previousTimestamp = null;
   accumulator = 0;
 }
 function setState(next) {
+  stopSounds();
   state = next;
   keys.clear();
   resetClock();
   updateInfo();
 }
 function updateInfo() {
+  ui.soundButton.textContent = soundEnabled ? 'Sound: On' : 'Sound: Off';
+  ui.soundButton.setAttribute('aria-pressed', String(soundEnabled));
   ui.score.textContent = 'Score: ' + score;
   ui.highScore.textContent = 'High Score: ' + highScore;
   ui.level.textContent = 'Level: ' + (currLevel?.id ?? 0);
@@ -73,12 +141,14 @@ function startLevel(index) {
   transitionTime = 0;
   Object.assign(bow, { y: 250, empty: false, animationTime: null });
   for (let i = 0; i < currLevel.targets; i++) {
-    targets.push({ x: WIDTH / 2 + i * 25, y: currLevel.spawnType === 'line' ? HEIGHT - 46 : Math.random() * (HEIGHT - 46), w: 25, h: 46, hit: false, popTime: 0 });
+    const baseX = WIDTH / 2 + i * 25;
+    targets.push({ x: baseX, baseX, phase: i * 0.7, motionTime: 0, speed: currLevel.speed * (currLevel.variedSpeed ? 0.85 + 0.3 * i / (currLevel.targets - 1) : 1), y: currLevel.spawnType === 'line' ? HEIGHT - 46 : Math.random() * (HEIGHT - 46), w: 25, h: 46, hit: false, popTime: 0 });
   }
   setState('playing');
 }
 function start() {
   if (state === 'loading' || state === 'error') return;
+  unlockAudio();
   score = 0;
   startLevel(0);
   ui.startButton.textContent = 'Restart';
@@ -86,6 +156,7 @@ function start() {
 }
 function pauseOrResume() {
   if (state !== 'playing' && state !== 'paused') return;
+  unlockAudio();
   setState(state === 'playing' ? 'paused' : 'playing');
   cnv.focus({ preventScroll: true });
 }
@@ -98,10 +169,13 @@ function arrowHitbox(a) {
 }
 function shootOrReload() {
   if (state !== 'playing' || remainingTime <= 0 || arrowsLeft <= 0) return;
+  unlockAudio();
   if (bow.empty) {
+    playSound('reload');
     bow.empty = false;
     bow.animationTime = null;
   } else {
+    playSound('shoot');
     arrows.push({ x: bow.x + bow.w / 2, y: bow.y + bow.h / 2 - 21, w: 32, h: 32 });
     arrowsLeft--;
     bow.empty = true;
@@ -112,10 +186,11 @@ function shootOrReload() {
 function finishLevel() {
   score += Math.ceil(remainingTime) * 10 + arrowsLeft * 10;
   updateHighScore();
-  if (levelIndex === LEVELS.length - 1) setState('won');
+  if (levelIndex === LEVELS.length - 1) { setState('won'); playSound('win'); }
   else {
     transitionTime = 3;
     setState('transition');
+    playSound('level');
   }
 }
 function checkGameOver() {
@@ -125,6 +200,7 @@ function checkGameOver() {
   if (remainingTime <= 0 || (arrowsLeft <= 0 && arrows.length === 0)) {
     updateHighScore();
     setState('lost');
+    playSound('lose');
   }
 }
 function update(dt) {
@@ -141,7 +217,11 @@ function update(dt) {
   for (const t of targets) {
     if (t.hit) t.popTime += dt;
     else {
-      t.y -= currLevel.speed * dt;
+      t.y -= (t.speed ?? currLevel.speed) * dt;
+      if (t.baseX !== undefined) {
+        t.motionTime += dt;
+        t.x = t.baseX + Math.sin(t.phase + t.motionTime * currLevel.swayRate) * currLevel.sway;
+      }
       if (t.y + t.h <= 0) t.y = HEIGHT;
     }
   }
@@ -152,6 +232,7 @@ function update(dt) {
         t.hit = true;
         t.popTime = 0;
         score += 10;
+        playSound('hit');
       }
     }
   }
@@ -234,6 +315,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && state === 'playing') setState('paused');
   resetClock();
 });
+ui.soundButton.addEventListener('click', toggleSound);
 ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);
 ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });

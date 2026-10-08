@@ -8,7 +8,7 @@ async function game({ blockedStorage = false, failImage = false } = {}) {
   const store = new Map();
   const context = new Proxy({}, { get: () => () => {} });
   function element(id) {
-    return elements[id] ||= { textContent: '', handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, getContext() { return context; }, focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { top: 100, height: 300 }; } };
+    return elements[id] ||= { textContent: '', handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, setAttribute(name, value) { this[name] = value; }, getContext() { return context; }, focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { top: 100, height: 300 }; } };
   }
   const sandbox = {
     document: { querySelector: () => element('game-area'), getElementById: element, addEventListener() {} },
@@ -131,6 +131,64 @@ test('timer expires exactly after 60 seconds', async () => {
   g.run('start(); for(let i=0;i<7200;i++) update(1/120)');
   assert.equal(g.run('remainingTime'), 0);
   assert.equal(g.run('state'), 'lost');
+});
+test('Restart button resets every active and terminal state and resumes animation', async () => {
+  for (const previousState of ['playing', 'paused', 'transition', 'lost', 'won']) {
+    const g = await game();
+    g.run(`startLevel(2); score=90; arrowsLeft=1; remainingTime=2; transitionTime=0.01; bow.empty=true; bow.y=0; state='${previousState}'; loop(1000)`);
+    g.elements.startButton.handlers.click();
+    assert.equal(g.run('state'), 'playing', previousState);
+    assert.equal(g.run('levelIndex'), 0, previousState);
+    assert.equal(g.run('score'), 0, previousState);
+    assert.equal(g.run('remainingTime'), 60, previousState);
+    assert.equal(g.run('arrowsLeft'), 20, previousState);
+    assert.equal(g.run('targets.length'), 15, previousState);
+    assert.equal(g.run('transitionTime'), 0, previousState);
+    assert.equal(g.run('bow.empty'), false, previousState);
+    assert.equal(g.run('bow.y'), 250, previousState);
+    g.run('loop(2000); loop(2017)');
+    assert.ok(g.run('remainingTime < 60'), previousState);
+    assert.equal(g.run('levelIndex'), 0, previousState);
+  }
+});
+test('sound toggle persists and works without audio support', async () => {
+  const g = await game();
+  g.elements.soundButton.handlers.click();
+  assert.equal(g.store.get('bowArrow.sound'), 'off');
+  assert.equal(g.elements.soundButton['aria-pressed'], 'false');
+  g.elements.soundButton.handlers.click();
+  assert.equal(g.store.get('bowArrow.sound'), 'on');
+  g.run('start(); shootOrReload(); shootOrReload()');
+  assert.equal(g.run('arrowsLeft'), 19);
+});
+test('later levels vary movement within the play area and pause freezes it', async () => {
+  const g = await game();
+  g.run('startLevel(1); update(0.2)');
+  assert.ok(g.run('targets.some(t=>t.x !== t.baseX)'));
+  g.run('startLevel(2)');
+  assert.ok(g.run('targets[0].speed < targets[14].speed'));
+  for (let i=0; i<200; i++) {
+    g.run('update(1/120)');
+    assert.ok(g.run('targets.every(t=>t.x >= WIDTH/2 - currLevel.sway && t.x+t.w <= WIDTH)'));
+  }
+  const before = g.run('JSON.stringify(targets)');
+  g.run('pauseOrResume(); update(2)');
+  assert.equal(g.run('JSON.stringify(targets)'), before);
+});
+test('audio starts on user action, mute stops active effects', async () => {
+  const g = await game();
+  g.run(`window.AudioContext = class {
+    constructor() { this.state='running'; this.currentTime=0; this.destination={}; }
+    createGain() { return {gain:{value:0,setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}}; }
+    createOscillator() { return {frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){},start(){},stop(){}}; }
+  }`);
+  assert.equal(g.run('audioContext'), null);
+  g.run('start(); shootOrReload()');
+  assert.equal(g.run('activeSounds.size'), 1);
+  g.elements.soundButton.handlers.click();
+  assert.equal(g.run('activeSounds.size'), 0);
+  g.run('shootOrReload()');
+  assert.equal(g.run('activeSounds.size'), 0);
 });
 (async () => {
   let failures=0;
