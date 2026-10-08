@@ -5,6 +5,7 @@ const LEVELS = [
   { id: 4, description: 'SLIMED — survive the swamp', targets: 12, arrow: 20, time: 90, speed: 55, targetType: 'slime' },
   { id: 5, description: 'Bulls Eye — hit the gold center', targets: 1, arrow: 20, time: 75, speed: 70, targetType: 'bullseye' },
   { id: 6, description: 'FIREBALLS — shoot or dodge the lava rocks', targets: 18, arrow: 20, time: 90, speed: 95, targetType: 'fireball' },
+  { id: 7, description: 'Unfriendly Skies — protect the white dove', targets: 12, arrow: 20, time: 90, speed: 80, targetType: 'vulture' },
 ];
 const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
 const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
@@ -33,6 +34,8 @@ let magicFeathers = 0;
 let levelHits = 0;
 let protectionTime = 0;
 let remainingTime = 0;
+let dove = null;
+let messageDelivered = false;
 
 let score = 0;
 let highScore = readHighScore();
@@ -189,9 +192,15 @@ function startLevel(index) {
   protectionTime = 0;
   arrows = [];
   targets = [];
+  dove = currLevel.targetType === 'vulture' ? { x: 100, y: 280, w: 32, h: 24, hit: false, motionTime: 0 } : null;
+  if (dove) messageDelivered = false;
 
   Object.assign(bow, { y: (HEIGHT - bow.h) / 2, empty: false, animationTime: null });
   for (let i = 0; i < currLevel.targets + (currLevel.friendlyTargets ?? 0); i++) {
+    if (currLevel.targetType === 'vulture') {
+      targets.push({ type: 'vulture', x: WIDTH + i * 140, y: 32 + Math.random() * (HEIGHT - 92), w: 40, h: 28, speed: currLevel.speed + (i % 3) * 5, motionTime: 0, hit: false, popTime: 0 });
+      continue;
+    }
     if (currLevel.targetType === 'bullseye') {
       targets.push({ type: 'bullseye', x: 680, y: 260, w: 80, h: 80, speed: currLevel.speed, direction: -1, motionTime: 0, hit: false, popTime: 0, missTime: 0 });
       continue;
@@ -226,6 +235,7 @@ function start() {
   score = 0;
   arrowsLeft = 0;
   magicFeathers = 0;
+  messageDelivered = false;
   startLevel(0);
   ui.startButton.textContent = 'Restart';
   cnv.focus({ preventScroll: true });
@@ -276,6 +286,11 @@ function circleCollision(box, cx, cy, radius) {
 }
 function updateTargetMotion(t, dt) {
   t.motionTime = (t.motionTime ?? 0) + dt;
+  if (t.type === 'vulture') {
+    t.x -= t.speed * dt;
+    if (dove && !dove.hit) t.y += Math.max(-25 * dt, Math.min(25 * dt, dove.y - t.y));
+    return;
+  }
   if (t.type === 'slime' || t.type === 'fireball') { t.x -= t.speed * dt; return; }
   if (t.type === 'bullseye') t.missTime = Math.max(0, t.missTime - dt);
   if (t.type === 'bubble' || t.type === 'bullseye') {
@@ -324,7 +339,7 @@ function finishLevel() {
 function checkGameOver() {
   if (state !== 'playing') return;
   // Hits count immediately: the last hit at the deadline wins, even during its pop animation.
-  if (targets.every(t => t.hit || t.friendly)) return finishLevel();
+  if (targets.every(t => t.hit || t.friendly) && (!dove || messageDelivered)) return finishLevel();
   if (remainingTime <= 0 || (arrowsLeft <= 0 && arrows.length === 0)) {
     updateHighScore();
     setState('lost');
@@ -388,13 +403,29 @@ function update(dt) {
       }
     }
   }
+  if (dove && !dove.hit) {
+    dove.motionTime += dt;
+    // Send the messenger onward only after the skies are clear.
+    if (targets.every(t => t.hit)) {
+      dove.x += 100 * dt;
+      if (dove.x > WIDTH) messageDelivered = true;
+    }
+    if (arrows.some(a => !a.spent && collision(arrowHitbox(a), dove)) ||
+        targets.some(t => !t.hit && t.type === 'vulture' && (collision(t, dove) || t.x + t.w < 0))) {
+      dove.hit = true;
+      updateHighScore();
+      setState('lost');
+      playSound('lose');
+    }
+  }
   // Resolve enemy contact after arrow hits so a successful shot prevents damage.
   for (const t of targets) {
-    if (!['slime', 'fireball'].includes(t.type) || t.hit) continue;
+    if (!['slime', 'fireball', 'vulture'].includes(t.type) || t.hit || state !== 'playing') continue;
     if (collision(t, bow)) {
       t.hit = true;
       t.popTime = 0;
       receivePlayerHit();
+      if (t.type === 'vulture' && state === 'playing') { dove.hit = true; updateHighScore(); setState('lost'); playSound('lose'); }
       if (state !== 'playing') break;
     } else if (t.x + t.w < 0) {
       // Dodged enemies have passed the archer; survival also completes the wave.
@@ -420,7 +451,7 @@ function renderTarget(t) {
     ctx.restore();
     return;
   }
-  if (t.type === 'slime' || t.type === 'fireball') {
+  if (['slime', 'fireball', 'vulture'].includes(t.type)) {
     ctx.save();
     ctx.globalAlpha = t.hit ? Math.max(0, 1 - t.popTime / 0.45) : 1;
     drawSprite(t.type, t);
@@ -450,7 +481,7 @@ function renderTarget(t) {
 }
 function render() {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
-  ctx.fillStyle = currLevel?.targetType === 'fireball' ? '#493b32' : currLevel?.targetType === 'slime' ? '#314b32' : 'green';
+  ctx.fillStyle = currLevel?.targetType === 'vulture' ? '#688c9d' : currLevel?.targetType === 'fireball' ? '#493b32' : currLevel?.targetType === 'slime' ? '#314b32' : 'green';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
   const bowFrame = bow.animationTime === null ? 0 : Math.min(5, 1 + Math.floor((bow.animationTime + 1e-9) / 0.1));
   ctx.save();
@@ -461,6 +492,7 @@ function render() {
   ctx.restore();
   arrows.forEach(a => drawSprite('arrow', a));
   targets.forEach(renderTarget);
+  if (dove && !dove.hit) drawSprite('dove', dove);
   const message = { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Level ' + currLevel?.id + ' complete!', lost: 'Game Over', won: 'You win!' }[state];
   if (message) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -536,7 +568,7 @@ ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);
 ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });
 function preloadSprites() {
-  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target', 'fireball'])].map(name => new Promise((resolve, reject) => {
+  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target', 'fireball', 'vulture', 'dove'])].map(name => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => { images.set(name, img); resolve(); };
     img.onerror = () => reject(new Error('Unable to load ' + name));

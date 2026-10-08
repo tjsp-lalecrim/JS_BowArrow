@@ -30,7 +30,7 @@ test('initial screen and preload failure', async () => {
   const g = await game();
   assert.equal(g.run('state'), 'idle');
   assert.equal(g.elements.level.textContent, 'Level: 0');
-  assert.equal(g.run('images.size'), 20);
+  assert.equal(g.run('images.size'), 22);
   const failed = await game({ failImage: true });
   assert.equal(failed.run('state'), 'error');
   assert.equal(failed.elements.startButton.disabled, true);
@@ -69,7 +69,7 @@ test('deadline loses even with arrows in flight', async () => {
 });
 test('last hit wins before pop finishes and final bonus persists', async () => {
   const g = await game();
-  g.run('startLevel(5); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
+  g.run('startLevel(6); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); messageDelivered=true; checkGameOver()');
   assert.equal(g.run('state'), 'won');
   assert.equal(g.run('score'), 220);
   assert.equal(g.elements.score.textContent, 'Score: 220');
@@ -409,7 +409,7 @@ test('new checkpoints replace previous progress and final victory removes the sa
   const g=await game();
   g.run('start(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
   assert.equal(JSON.parse(g.store.get('bowArrow.checkpoint')).levelIndex,2);
-  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
+  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; messageDelivered=true; checkGameOver()');
   assert.equal(g.run('state'),'won');
   assert.equal(g.run('checkpoint'),null);
   assert.equal(g.store.has('bowArrow.checkpoint'),false);
@@ -471,7 +471,7 @@ test('fireballs advance left, pause, reward hits and activate feather protection
   g.run('protectionTime=0; targets[2].x=60; targets[2].y=bow.y+20; update(1/120)');
   assert.equal(g.run('state'),'lost');
 });
-test('phase 6 checkpoint restores supplies and final completion clears it', async () => {
+test('phase 6 checkpoint restores supplies and completion advances', async () => {
   const g=await game();
   g.run('startLevel(4); arrowsLeft=6; magicFeathers=2; targets=[]; checkGameOver(); nextLevel()');
   assert.equal(g.run('currLevel.id'),6);
@@ -484,8 +484,42 @@ test('phase 6 checkpoint restores supplies and final completion clears it', asyn
   g.run('targets[0].x=-41; targets[0].y=0; update(1/120)');
   assert.equal(g.run('targets[0].hit'),true);
   g.run('targets.forEach(t=>t.hit=true); checkGameOver()');
+  assert.equal(g.run('state'),'transition');
+  assert.equal(g.run('checkpoint.levelIndex'),6);
+});
+test('stage 7 vultures approach the protected dove and pause freezes them', async () => {
+  const g=await game();
+  g.run('startLevel(6); targets[0].x=400; targets[0].y=100; update(1)');
+  assert.equal(g.run('targets[0].x'),320);
+  assert.equal(g.run('targets[0].y'),125);
+  g.run('pauseOrResume(); update(2)');
+  assert.equal(g.run('targets[0].x'),320);
+  assert.equal(g.run('dove.x'),100);
+});
+test('hitting the dove or allowing a vulture through loses regardless of feathers', async () => {
+  for (const attack of ["arrows=[{x:90,y:290,w:32,h:5}]", "targets[0].x=-41"]) {
+    const g=await game();
+    g.run('startLevel(6); magicFeathers=5; '+attack+'; update(1/120)');
+    assert.equal(g.run('state'),'lost');
+    assert.equal(g.run('dove.hit'),true);
+  }
+});
+test('stage 7 checkpoint retries and messenger departs only after all enemies are shot', async () => {
+  const g=await game();
+  g.run('startLevel(5); arrowsLeft=8; targets=[]; checkGameOver(); nextLevel()');
+  assert.equal(g.run('currLevel.id'),7);
+  assert.equal(g.run('arrowsLeft'),28);
+  g.run('remainingTime=0; checkGameOver(); continueCheckpoint()');
+  assert.equal(g.run('arrowsLeft'),28);
+  g.run('targets.forEach(registerTargetHit); checkGameOver()');
+  assert.equal(g.run('state'),'playing');
+  g.run('for(let i=0;i<8*120;i++) update(1/120)');
+  assert.equal(g.run('messageDelivered'),true);
   assert.equal(g.run('state'),'won');
   assert.equal(g.run('checkpoint'),null);
+  g.run('start()');
+  assert.equal(g.run('dove'),null);
+  assert.equal(g.run('messageDelivered'),false);
 });
 (async () => {
   let failures=0;
