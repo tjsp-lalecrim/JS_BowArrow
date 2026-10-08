@@ -1,16 +1,17 @@
 const LEVELS = [
   { id: 1, description: 'Practice', targets: 15, arrow: 20, time: 60, speed: 60, spawnType: 'line', sway: 0, swayRate: 0, variedSpeed: false },
-  { id: 2, description: 'Drifting balloons', targets: 15, arrow: 20, time: 45, speed: 120, spawnType: 'random', sway: 10, swayRate: 1.6, variedSpeed: false },
+  { id: 2, description: 'Drifting balloons', targets: 15, arrow: 20, time: 75, speed: 80, spawnType: 'random', sway: 10, swayRate: 1.0, variedSpeed: false },
   { id: 3, description: 'Changing winds', targets: 15, arrow: 15, time: 30, speed: 180, spawnType: 'random', sway: 18, swayRate: 2.4, variedSpeed: true },
 ];
 const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
 const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
 const cnv = document.querySelector('#game-area');
 const ctx = cnv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
@@ -20,12 +21,12 @@ let arrows = [];
 let targets = [];
 let arrowsLeft = 0;
 let remainingTime = 0;
-let transitionTime = 0;
+
 let score = 0;
 let highScore = readHighScore();
 let previousTimestamp = null;
 let accumulator = 0;
-const bow = { x: 0, y: 250, w: 100, h: 100, empty: false, animationTime: null };
+const bow = { x: 0, y: 268, w: 64, h: 64, empty: false, animationTime: null };
 
 function readHighScore() {
   try {
@@ -126,6 +127,8 @@ function updateInfo() {
   ui.targetsLeft.textContent = 'Targets Left: ' + targets.filter(t => !t.hit).length;
   ui.bowStatus.textContent = bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
   ui.startButton.disabled = state === 'loading' || state === 'error';
+  ui.nextLevelButton.hidden = state !== 'transition';
+  ui.nextLevelButton.disabled = state !== 'transition';
   ui.pauseButton.hidden = state !== 'playing' && state !== 'paused';
   ui.pauseButton.textContent = state === 'paused' ? 'Resume' : 'Pause';
   ui.shootButton.disabled = state !== 'playing' || arrowsLeft <= 0 || remainingTime <= 0;
@@ -138,8 +141,8 @@ function startLevel(index) {
   arrowsLeft = currLevel.arrow;
   arrows = [];
   targets = [];
-  transitionTime = 0;
-  Object.assign(bow, { y: 250, empty: false, animationTime: null });
+
+  Object.assign(bow, { y: (HEIGHT - bow.h) / 2, empty: false, animationTime: null });
   for (let i = 0; i < currLevel.targets; i++) {
     const baseX = WIDTH / 2 + i * 25;
     targets.push({ x: baseX, baseX, phase: i * 0.7, motionTime: 0, speed: currLevel.speed * (currLevel.variedSpeed ? 0.85 + 0.3 * i / (currLevel.targets - 1) : 1), y: currLevel.spawnType === 'line' ? HEIGHT - 46 : Math.random() * (HEIGHT - 46), w: 25, h: 46, hit: false, popTime: 0 });
@@ -164,8 +167,8 @@ function collision(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 function arrowHitbox(a) {
-  // Only the central shaft of the 32px sprite can hit a balloon.
-  return { x: a.x, y: a.y + 14, w: a.w, h: 4 };
+  // Match the actual 32x5 sprite; no invisible vertical offset.
+  return { x: a.x, y: a.y, w: a.w, h: a.h };
 }
 function shootOrReload() {
   if (state !== 'playing' || remainingTime <= 0 || arrowsLeft <= 0) return;
@@ -176,7 +179,7 @@ function shootOrReload() {
     bow.animationTime = null;
   } else {
     playSound('shoot');
-    arrows.push({ x: bow.x + bow.w / 2, y: bow.y + bow.h / 2 - 21, w: 32, h: 32 });
+    arrows.push({ x: bow.x + bow.w - 14, y: bow.y + bow.h / 2 - 2, w: 32, h: 5 });
     arrowsLeft--;
     bow.empty = true;
     bow.animationTime = 0;
@@ -188,7 +191,7 @@ function finishLevel() {
   updateHighScore();
   if (levelIndex === LEVELS.length - 1) { setState('won'); playSound('win'); }
   else {
-    transitionTime = 3;
+
     setState('transition');
     playSound('level');
   }
@@ -204,11 +207,7 @@ function checkGameOver() {
   }
 }
 function update(dt) {
-  if (state === 'transition') {
-    transitionTime -= dt;
-    if (transitionTime <= 0) startLevel(levelIndex + 1);
-    return;
-  }
+
   if (state !== 'playing') return;
   remainingTime = Math.max(0, remainingTime - dt);
   if (remainingTime < 1e-9) remainingTime = 0;
@@ -243,7 +242,7 @@ function update(dt) {
 }
 function drawSprite(name, obj) {
   const img = images.get(name);
-  if (img) ctx.drawImage(img, 0, 0, obj.w, obj.h, obj.x, obj.y, obj.w, obj.h);
+  if (img) ctx.drawImage(img, obj.x, obj.y, obj.w, obj.h);
 }
 function render() {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -253,7 +252,7 @@ function render() {
   drawSprite(BOW_FRAMES[bowFrame], bow);
   arrows.forEach(a => drawSprite('arrow', a));
   targets.forEach(t => drawSprite(POP_FRAMES[t.hit ? Math.min(5, Math.floor(t.popTime / 0.075)) : 0], t));
-  const message = { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Well done!', lost: 'Game Over', won: 'You win!' }[state];
+  const message = { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Level ' + currLevel?.id + ' complete!', lost: 'Game Over', won: 'You win!' }[state];
   if (message) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -315,6 +314,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && state === 'playing') setState('paused');
   resetClock();
 });
+function nextLevel() {
+  if (state !== 'transition') return;
+  unlockAudio();
+  startLevel(levelIndex + 1);
+  cnv.focus({ preventScroll: true });
+}
+ui.nextLevelButton.addEventListener('click', nextLevel);
 ui.soundButton.addEventListener('click', toggleSound);
 ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);

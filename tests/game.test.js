@@ -51,7 +51,7 @@ test('restart cancels transition and resets bow, input and pause label', async (
   assert.equal(g.run('remainingTime'), 58);
   g.run('shootOrReload(); bow.y=0; keys.add(\'ArrowUp\'); pauseOrResume(); start()');
   assert.equal(g.run('bow.empty'), false);
-  assert.equal(g.run('bow.y'), 250);
+  assert.equal(g.run('bow.y'), 268);
   assert.equal(g.run('bow.animationTime'), null);
   assert.equal(g.run('keys.size'), 0);
   assert.equal(g.elements.pauseButton.textContent, 'Pause');
@@ -84,20 +84,20 @@ test('storage unavailable does not prevent playing', async () => {
 });
 test('adjacent expired arrows are all removed', async () => {
   const g = await game();
-  g.run('start(); arrows=[{x:801,y:0,w:32,h:32},{x:802,y:0,w:32,h:32}]; update(1/120)');
+  g.run('start(); arrows=[{x:801,y:0,w:32,h:5},{x:802,y:0,w:32,h:5}]; update(1/120)');
   assert.equal(g.run('arrows.length'), 0);
 });
 test('scaled pointer coordinates clamp to canvas bounds', async () => {
   const g = await game();
   g.run('start(); positionBow({clientY:250})');
-  assert.equal(g.run('bow.y'), 250);
+  assert.equal(g.run('bow.y'), 268);
   g.run('positionBow({clientY:1000})');
-  assert.equal(g.run('bow.y'), 500);
+  assert.equal(g.run('bow.y'), 536);
 });
 test('collision covers lower balloon and scores each target once', async () => {
   const g = await game();
   assert.equal(g.run('collision({x:0,y:35,w:20,h:4},{x:10,y:0,w:25,h:46})'), true);
-  g.run('start(); targets=[{x:100,y:100,w:25,h:46,hit:false,popTime:0}]; arrows=[{x:90,y:110,w:32,h:32}]; update(1/120); checkGameOver()');
+  g.run('start(); targets=[{x:100,y:100,w:25,h:46,hit:false,popTime:0}]; arrows=[{x:90,y:110,w:32,h:5}]; update(1/120); checkGameOver()');
   assert.equal(g.run('score'), 810); // 10 hit + 600 time + 200 unused arrows.
   g.run('checkGameOver()');
   assert.equal(g.run('score'), 810);
@@ -109,10 +109,10 @@ test('keyboard opposing keys and release work independently', async () => {
   g.elements['game-area'].handlers.keydown(event('ArrowUp'));
   g.elements['game-area'].handlers.keydown(event('ArrowDown'));
   g.run('update(0.1)');
-  assert.equal(g.run('bow.y'), 250);
+  assert.equal(g.run('bow.y'), 268);
   g.elements['game-area'].handlers.keyup(event('ArrowUp'));
   g.run('update(0.1)');
-  assert.equal(g.run('bow.y'), 280);
+  assert.equal(g.run('bow.y'), 298);
   g.elements['game-area'].handlers.keydown(event('Space'));
   assert.equal(g.run('arrowsLeft'), 19);
 });
@@ -135,7 +135,7 @@ test('timer expires exactly after 60 seconds', async () => {
 test('Restart button resets every active and terminal state and resumes animation', async () => {
   for (const previousState of ['playing', 'paused', 'transition', 'lost', 'won']) {
     const g = await game();
-    g.run(`startLevel(2); score=90; arrowsLeft=1; remainingTime=2; transitionTime=0.01; bow.empty=true; bow.y=0; state='${previousState}'; loop(1000)`);
+    g.run(`startLevel(2); score=90; arrowsLeft=1; remainingTime=2; bow.empty=true; bow.y=0; state='${previousState}'; loop(1000)`);
     g.elements.startButton.handlers.click();
     assert.equal(g.run('state'), 'playing', previousState);
     assert.equal(g.run('levelIndex'), 0, previousState);
@@ -143,9 +143,9 @@ test('Restart button resets every active and terminal state and resumes animatio
     assert.equal(g.run('remainingTime'), 60, previousState);
     assert.equal(g.run('arrowsLeft'), 20, previousState);
     assert.equal(g.run('targets.length'), 15, previousState);
-    assert.equal(g.run('transitionTime'), 0, previousState);
+
     assert.equal(g.run('bow.empty'), false, previousState);
-    assert.equal(g.run('bow.y'), 250, previousState);
+    assert.equal(g.run('bow.y'), 268, previousState);
     g.run('loop(2000); loop(2017)');
     assert.ok(g.run('remainingTime < 60'), previousState);
     assert.equal(g.run('levelIndex'), 0, previousState);
@@ -189,6 +189,59 @@ test('audio starts on user action, mute stops active effects', async () => {
   assert.equal(g.run('activeSounds.size'), 0);
   g.run('shootOrReload()');
   assert.equal(g.run('activeSounds.size'), 0);
+});
+test('arrow collision matches the visible 32x5 sprite', async () => {
+  const g = await game();
+  g.run('start(); shootOrReload()');
+  assert.equal(g.run('arrows[0].w'), 32);
+  assert.equal(g.run('arrows[0].h'), 5);
+  assert.equal(g.run('bow.w'), 64);
+  assert.equal(g.run('bow.h'), 64);
+  assert.equal(g.run('collision(arrowHitbox({x:100,y:100,w:32,h:5}), {x:110,y:104,w:25,h:46})'), true);
+  assert.equal(g.run('collision(arrowHitbox({x:100,y:100,w:32,h:5}), {x:110,y:110,w:25,h:46})'), false);
+});
+test('level 2 stays active while time, ammunition and targets remain', async () => {
+  const g = await game();
+  g.run('startLevel(1)');
+  assert.equal(g.run('remainingTime'), 75);
+  assert.equal(g.run('targets[0].speed'), 80);
+  g.run('for(let i=0;i<60*120;i++) update(1/120)');
+  assert.equal(g.run('state'), 'playing');
+  assert.equal(g.run('levelIndex'), 1);
+  assert.equal(g.run('arrowsLeft'), 20);
+  assert.equal(g.run('targets.length'), 15);
+  assert.ok(Math.abs(g.run('remainingTime')-15)<1e-7);
+  g.run('for(let i=0;i<15*120;i++) update(1/120)');
+  assert.equal(g.run('state'), 'lost');
+  assert.equal(g.run('levelIndex'), 1);
+});
+test('clearing level 2 waits for Next Level and preserves score', async () => {
+  const g = await game();
+  g.run('startLevel(1); remainingTime=30; arrowsLeft=10; targets.forEach(t=>t.hit=true); checkGameOver()');
+  const total = g.run('score');
+  assert.equal(g.run('state'), 'transition');
+  assert.equal(g.elements.nextLevelButton.hidden, false);
+  g.run('for(let i=0;i<10*120;i++) update(1/120)');
+  assert.equal(g.run('levelIndex'), 1);
+  assert.equal(g.run('remainingTime'), 30);
+  assert.equal(g.run('arrowsLeft'), 10);
+  assert.equal(g.run('score'), total);
+  g.elements.nextLevelButton.handlers.click();
+  assert.equal(g.run('levelIndex'), 2);
+  assert.equal(g.run('state'), 'playing');
+  assert.equal(g.run('score'), total);
+  assert.equal(g.elements.nextLevelButton.hidden, true);
+  g.elements.nextLevelButton.handlers.click();
+  assert.equal(g.run('levelIndex'), 2);
+});
+test('level 2 waits for last arrow and loses only when ammunition is exhausted', async () => {
+  const g = await game();
+  g.run('startLevel(1); arrowsLeft=0; arrows=[{x:700,y:-100,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('state'), 'playing');
+  g.run('arrows[0].x=801; update(1/120)');
+  assert.equal(g.run('state'), 'lost');
+  assert.equal(g.run('levelIndex'), 1);
+  assert.ok(g.run('remainingTime > 0'));
 });
 (async () => {
   let failures=0;
