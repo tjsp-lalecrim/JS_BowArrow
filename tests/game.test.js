@@ -3,9 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const source = fs.readFileSync(path.join(__dirname, '../js/script.js'), 'utf8');
-async function game({ blockedStorage = false, failImage = false, savedCheckpoint = null } = {}) {
+async function game({ blockedStorage = false, failImage = false, savedCheckpoint = null, savedDragPreset = null } = {}) {
   const elements = {};
   const store = new Map();
+  if (savedDragPreset !== null) store.set('bowArrow.dragPreset', savedDragPreset);
   if (savedCheckpoint !== null) store.set('bowArrow.checkpoint', savedCheckpoint);
   const context = new Proxy({}, { get: () => () => {} });
   function element(id) {
@@ -628,6 +629,37 @@ test('shot feedback expires and feather damage is announced', async () => {
   assert.equal(g.elements.shootButton['data-feedback'],'');
   g.run('magicFeathers=1; receivePlayerHit()');
   assert.equal(g.elements.bowStatus.textContent,'Magic feather absorbed the hit!');
+});
+test('drag presets scale relative movement and persist across reloads', async () => {
+  for (const [preset, expected] of [[0,281],[1,288],[2,298]]) {
+    const g=await game({savedDragPreset:String(preset)});
+    g.run('start()');
+    const e={pointerType:'touch',pointerId:1,button:0,clientY:200,preventDefault(){}};
+    g.elements['game-area'].handlers.pointerdown(e);
+    g.elements['game-area'].handlers.pointermove({...e,clientY:210});
+    assert.equal(g.run('bow.y'),expected);
+    assert.equal(g.run('arrowsLeft'),20);
+  }
+  const g=await game();
+  g.elements.sensitivityButton.handlers.click();
+  assert.equal(g.store.get('bowArrow.dragPreset'),'2');
+  const reloaded=await game({savedDragPreset:g.store.get('bowArrow.dragPreset')});
+  assert.equal(reloaded.elements.sensitivityButton.textContent,'Drag: Fast');
+});
+test('invalid sensitivity falls back to normal and changing it ends the active drag', async () => {
+  for(const value of ['bad','-1','3','1.5']) {
+    const g=await game({savedDragPreset:value});
+    assert.equal(g.run('dragPreset'),1);
+  }
+  const g=await game({blockedStorage:true});
+  g.run('start(); movementPointer={id:1,y:200}');
+  g.elements.sensitivityButton.handlers.click();
+  assert.equal(g.run('movementPointer'),null);
+  assert.equal(g.run('dragPreset'),2);
+  g.elements.sensitivityButton.handlers.click();
+  assert.equal(g.run('dragPreset'),0);
+  g.elements.sensitivityButton.handlers.click();
+  assert.equal(g.run('dragPreset'),1);
 });
 (async () => {
   let failures=0;

@@ -21,7 +21,7 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton', 'handButton', 'stageIntro', 'stageBrief', 'beginButton', 'sensitivityButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
@@ -30,6 +30,17 @@ let movementPointer = null;
 let suppressShootClick = false;
 let feedbackTime = 0;
 let feedbackAction = '';
+const DRAG_PRESETS = [
+  { label: 'Slow', multiplier: 0.65 },
+  { label: 'Normal', multiplier: 1 },
+  { label: 'Fast', multiplier: 1.5 },
+];
+let dragPreset = 1;
+try {
+  const saved = localStorage.getItem('bowArrow.dragPreset');
+  const parsed = Number(saved);
+  if (saved !== null && Number.isInteger(parsed) && parsed >= 0 && parsed < DRAG_PRESETS.length) dragPreset = parsed;
+} catch { /* Optional preference. */ }
 let leftHanded = false;
 try { leftHanded = localStorage.getItem('bowArrow.leftHanded') === 'yes'; } catch { /* Optional preference. */ }
 const STAGE_GOALS = [
@@ -560,7 +571,7 @@ cnv.addEventListener('pointermove', event => {
   const rect = cnv.getBoundingClientRect();
   const height = Number.isFinite(rect.width) ? Math.min(rect.height, rect.width * HEIGHT / WIDTH) : rect.height;
   if (height <= 0) return;
-  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, bow.y + (event.clientY - movementPointer.y) * HEIGHT / height));
+  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, bow.y + (event.clientY - movementPointer.y) * HEIGHT / height * DRAG_PRESETS[dragPreset].multiplier));
   movementPointer.y = event.clientY;
 });
 cnv.addEventListener('pointerdown', event => {
@@ -673,6 +684,18 @@ ui.beginButton.addEventListener('click', () => {
   focusGame();
 });
 updateHandPreference();
+function updateSensitivity() {
+  ui.sensitivityButton.textContent = 'Drag: ' + DRAG_PRESETS[dragPreset].label;
+  ui.sensitivityButton.setAttribute('aria-label', 'Drag sensitivity: ' + DRAG_PRESETS[dragPreset].label + '. Activate to change.');
+}
+ui.sensitivityButton.addEventListener('click', () => {
+  dragPreset = (dragPreset + 1) % DRAG_PRESETS.length;
+  // Releasing the old gesture prevents a held finger from jumping after a change.
+  movementPointer = null;
+  try { localStorage.setItem('bowArrow.dragPreset', String(dragPreset)); } catch { /* Optional preference. */ }
+  updateSensitivity();
+});
+updateSensitivity();
 function preloadSprites() {
   return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target', 'fireball', 'vulture', 'dove'])].map(name => new Promise((resolve, reject) => {
     const img = new Image();
