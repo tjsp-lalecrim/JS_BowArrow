@@ -1,0 +1,142 @@
+const assert = require('assert/strict');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const source = fs.readFileSync(path.join(__dirname, '../js/script.js'), 'utf8');
+async function game({ blockedStorage = false, failImage = false } = {}) {
+  const elements = {};
+  const store = new Map();
+  const context = new Proxy({}, { get: () => () => {} });
+  function element(id) {
+    return elements[id] ||= { textContent: '', handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, getContext() { return context; }, focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { top: 100, height: 300 }; } };
+  }
+  const sandbox = {
+    document: { querySelector: () => element('game-area'), getElementById: element, addEventListener() {} },
+    window: { requestAnimationFrame() {}, addEventListener() {} },
+    localStorage: { getItem(key) { if (blockedStorage) throw Error('blocked'); return store.get(key) ?? null; }, setItem(key, value) { if (blockedStorage) throw Error('blocked'); store.set(key, value); } },
+    Image: class { set src(value) { this.path = value; queueMicrotask(() => failImage ? this.onerror() : this.onload()); } },
+  };
+  vm.createContext(sandbox);
+  const run = code => vm.runInContext(code, sandbox);
+  run(source);
+  await new Promise(resolve => setImmediate(resolve));
+  return { run, elements, store };
+}
+const tests = [];
+function test(name, fn) { tests.push({ name, fn }); }
+
+test('initial screen and preload failure', async () => {
+  const g = await game();
+  assert.equal(g.run('state'), 'idle');
+  assert.equal(g.elements.level.textContent, 'Level: 0');
+  assert.equal(g.run('images.size'), 13);
+  const failed = await game({ failImage: true });
+  assert.equal(failed.run('state'), 'error');
+  assert.equal(failed.elements.startButton.disabled, true);
+});
+test('pause freezes time, pop, bow and shooting', async () => {
+  const g = await game();
+  g.run('start(); targets[0].hit = true; bow.animationTime = 0.1; pauseOrResume(); update(2); shootOrReload()');
+  assert.equal(g.run('remainingTime'), 60);
+  assert.equal(g.run('targets[0].popTime'), 0);
+  assert.equal(g.run('bow.animationTime'), 0.1);
+  assert.equal(g.run('arrowsLeft'), 20);
+  g.run('pauseOrResume(); update(0.5)');
+  assert.equal(g.run('targets.length'), 14);
+});
+test('restart cancels transition and resets bow, input and pause label', async () => {
+  const g = await game();
+  g.run('start(); targets=[]; checkGameOver(); update(1); start(); update(2)');
+  assert.equal(g.run('levelIndex'), 0);
+  assert.equal(g.run('remainingTime'), 58);
+  g.run('shootOrReload(); bow.y=0; keys.add(\'ArrowUp\'); pauseOrResume(); start()');
+  assert.equal(g.run('bow.empty'), false);
+  assert.equal(g.run('bow.y'), 250);
+  assert.equal(g.run('bow.animationTime'), null);
+  assert.equal(g.run('keys.size'), 0);
+  assert.equal(g.elements.pauseButton.textContent, 'Pause');
+});
+test('empty targets at zero time wins', async () => {
+  const g = await game();
+  g.run('start(); remainingTime=0; targets=[]; checkGameOver()');
+  assert.equal(g.run('state'), 'transition');
+});
+test('deadline loses even with arrows in flight', async () => {
+  const g = await game();
+  g.run('start(); shootOrReload(); remainingTime=0; checkGameOver()');
+  assert.equal(g.run('state'), 'lost');
+});
+test('last hit wins before pop finishes and final bonus persists', async () => {
+  const g = await game();
+  g.run('startLevel(2); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
+  assert.equal(g.run('state'), 'won');
+  assert.equal(g.run('score'), 220);
+  assert.equal(g.elements.score.textContent, 'Score: 220');
+  assert.equal(g.elements.highScore.textContent, 'High Score: 220');
+  assert.equal(g.store.get('bowArrow.highScore'), '220');
+  g.run('shootOrReload(); update(10)');
+  assert.equal(g.run('score'), 220);
+});
+test('storage unavailable does not prevent playing', async () => {
+  const g = await game({ blockedStorage: true });
+  g.run('start(); score=100; updateHighScore()');
+  assert.equal(g.run('highScore'), 100);
+});
+test('adjacent expired arrows are all removed', async () => {
+  const g = await game();
+  g.run('start(); arrows=[{x:801,y:0,w:32,h:32},{x:802,y:0,w:32,h:32}]; update(1/120)');
+  assert.equal(g.run('arrows.length'), 0);
+});
+test('scaled pointer coordinates clamp to canvas bounds', async () => {
+  const g = await game();
+  g.run('start(); positionBow({clientY:250})');
+  assert.equal(g.run('bow.y'), 250);
+  g.run('positionBow({clientY:1000})');
+  assert.equal(g.run('bow.y'), 500);
+});
+test('collision covers lower balloon and scores each target once', async () => {
+  const g = await game();
+  assert.equal(g.run('collision({x:0,y:35,w:20,h:4},{x:10,y:0,w:25,h:46})'), true);
+  g.run('start(); targets=[{x:100,y:100,w:25,h:46,hit:false,popTime:0}]; arrows=[{x:90,y:110,w:32,h:32}]; update(1/120); checkGameOver()');
+  assert.equal(g.run('score'), 810); // 10 hit + 600 time + 200 unused arrows.
+  g.run('checkGameOver()');
+  assert.equal(g.run('score'), 810);
+});
+test('keyboard opposing keys and release work independently', async () => {
+  const g = await game();
+  g.run('start()');
+  const event = code => ({ code, repeat: false, preventDefault() {} });
+  g.elements['game-area'].handlers.keydown(event('ArrowUp'));
+  g.elements['game-area'].handlers.keydown(event('ArrowDown'));
+  g.run('update(0.1)');
+  assert.equal(g.run('bow.y'), 250);
+  g.elements['game-area'].handlers.keyup(event('ArrowUp'));
+  g.run('update(0.1)');
+  assert.equal(g.run('bow.y'), 280);
+  g.elements['game-area'].handlers.keydown(event('Space'));
+  assert.equal(g.run('arrowsLeft'), 19);
+});
+test('same simulation result at 60Hz and 144Hz', async () => {
+  async function simulate(hz) {
+    const g = await game();
+    g.run('start(); keys.add(\'ArrowDown\'); loop(0)');
+    for (let i=1; i<=hz; i++) g.run(`loop(${i * 1000 / hz})`);
+    return g.run('[bow.y, remainingTime, targets[0].y]');
+  }
+  const a = await simulate(60), b = await simulate(144);
+  for (let i=0;i<a.length;i++) assert.ok(Math.abs(a[i]-b[i])<1e-7);
+});
+test('timer expires exactly after 60 seconds', async () => {
+  const g = await game();
+  g.run('start(); for(let i=0;i<7200;i++) update(1/120)');
+  assert.equal(g.run('remainingTime'), 0);
+  assert.equal(g.run('state'), 'lost');
+});
+(async () => {
+  let failures=0;
+  for (const {name,fn} of tests) {
+    try { await fn(); console.log('PASS ' + name); }
+    catch (error) { failures++; console.error('FAIL ' + name, error); }
+  }
+  if (failures) process.exitCode=1;
+})();

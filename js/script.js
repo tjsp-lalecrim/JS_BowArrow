@@ -1,534 +1,250 @@
-// Global variables
+const LEVELS = [
+  { id: 1, description: 'Practice', targets: 15, arrow: 20, time: 60, speed: 60, spawnType: 'line' },
+  { id: 2, description: 'More balloons', targets: 15, arrow: 20, time: 45, speed: 120, spawnType: 'random' },
+  { id: 3, description: 'Final level', targets: 15, arrow: 15, time: 30, speed: 180, spawnType: 'random' },
+];
+const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
+const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
+const cnv = document.querySelector('#game-area');
+const ctx = cnv.getContext('2d');
+const WIDTH = cnv.width = 800;
+const HEIGHT = cnv.height = 600;
+const STEP = 1 / 120;
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton'].map(id => [id, document.getElementById(id)]));
+const images = new Map();
+const keys = new Set();
+let state = 'loading';
 let levelIndex = 0;
 let currLevel = null;
-
 let arrows = [];
 let targets = [];
 let arrowsLeft = 0;
-
-let timer = null;
-let timeLeft = 0;
-let popInterval = null;
-
-let isPaused = false;
-let isGameOver = false;
-let isCompleteLevel = false;
-let isGameComplete = false;
-
+let remainingTime = 0;
+let transitionTime = 0;
 let score = 0;
-let highScore = 0;
+let highScore = readHighScore();
+let previousTimestamp = null;
+let accumulator = 0;
+const bow = { x: 0, y: 250, w: 100, h: 100, empty: false, animationTime: null };
 
-// Constants
-const LEVELS = [
-  {
-    id: 1,
-    description: "Practice",
-    targets: 15,
-    arrow: 20,
-    time: 60,
-    speed: 1,
-    spawnType: "line",
-  },
-  {
-    id: 2,
-    description: "More baloons",
-    targets: 15,
-    arrow: 20,
-    time: 45,
-    speed: 2,
-    spawnType: "random",
-  },
-  {
-    id: 3,
-    description: "Final level",
-    targets: 15,
-    arrow: 15,
-    time: 30,
-    speed: 3,
-    spawnType: "random",
-  },
-];
-
-const BOW_SHOOT_ANIMATION = [
-  "images/bow.png",
-  "images/bow_shoot_01.png",
-  "images/bow_shoot_02.png",
-  "images/bow_shoot_03.png",
-  "images/bow_shoot_04.png",
-  "images/bow_reload.png",
-];
-
-const BALOON_POP_ANIMATION = [
-  "images/baloon.png",
-  "images/baloon_pop_01.png",
-  "images/baloon_pop_02.png",
-  "images/baloon_pop_03.png",
-  "images/baloon_pop_04.png",
-  "images/baloon_pop_05.png",
-];
-
-// Canvas
-const cnv = document.querySelector("canvas");
-const ctx = cnv.getContext("2d");
-const cnvW = (cnv.width = 800);
-const cnvH = (cnv.height = 600);
-
-// Game objects
-let bow = {
-  img: new Image(),
-  x: 0,
-  y: cnvH / 2 - 50,
-  w: 100,
-  h: 100,
-  speed: 5,
-  dx: 0,
-  dy: 0,
-  anim: 0,
-  empty: false,
-  update: function () {
-    this.y += this.dy;
-    if (this.y < 0) {
-      this.y = 0;
-    } else if (this.y + this.h > cnvH) {
-      this.y = cnvH - this.h;
-    }
-  },
-};
-bow.img.src = "images/bow.png";
-
-let arrow = {
-  img: new Image(),
-  w: 32,
-  h: 32,
-  speed: 3,
-  update: function () {
-    this.x += this.speed;
-  },
-};
-arrow.img.src = "images/arrow.png";
-
-let target = {
-  w: 25,
-  h: 46,
-  shooted: false,
-  anim: 0,
-  delay: 1000,
-  update: function () {
-    this.y -= currLevel.speed;
-  },
-};
-
-// Render functions
-function renderBackground() {
-  ctx.clearRect(0, 0, cnvW, cnvH);
-  ctx.fillStyle = "green";
-  ctx.fillRect(0, 0, cnvW, cnvH);
+function readHighScore() {
+  try {
+    const value = Number(localStorage.getItem('bowArrow.highScore'));
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  } catch { return 0; }
 }
-
-// First background render
-renderBackground();
-
-function renderBow() {
-  ctx.save();
-  ctx.drawImage(bow.img, 0, 0, bow.w, bow.h, bow.x, bow.y, bow.w, bow.h);
-  ctx.restore();
+function updateHighScore() {
+  if (score <= highScore) return;
+  highScore = score;
+  try { localStorage.setItem('bowArrow.highScore', String(highScore)); } catch { /* Storage may be unavailable. */ }
 }
-
-function renderArrow() {
-  for (let i = 0; i < arrows.length; i++) {
-    const currArrow = arrows[i];
-
-    ctx.save();
-    ctx.drawImage(
-      currArrow.img,
-      0,
-      0,
-      currArrow.w,
-      currArrow.h,
-      currArrow.x,
-      currArrow.y,
-      currArrow.w,
-      currArrow.h
-    );
-    ctx.restore();
-  }
+function resetClock() {
+  previousTimestamp = null;
+  accumulator = 0;
 }
-
-function renderTarget() {
-  for (let i = 0; i < targets.length; i++) {
-    const currTarget = targets[i];
-
-    ctx.save();
-    ctx.drawImage(
-      currTarget.img,
-      0,
-      0,
-      currTarget.w,
-      currTarget.h,
-      currTarget.x,
-      currTarget.y,
-      currTarget.w,
-      currTarget.h
-    );
-    ctx.restore();
-  }
+function setState(next) {
+  state = next;
+  keys.clear();
+  resetClock();
+  updateInfo();
 }
-
-function renderGameOver() {
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-  ctx.fillRect(0, 0, cnvW, cnvH);
-  ctx.fillStyle = "white";
-  ctx.font = "50px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("Game Over", cnvW / 2, cnvH / 2);
-  ctx.restore();
-}
-
-function renderNextLevel() {
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-  ctx.fillRect(0, 0, cnvW, cnvH);
-  ctx.fillStyle = "white";
-  ctx.font = "50px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("Well done!", cnvW / 2, cnvH / 2);
-  ctx.restore();
-}
-
-function renderEndGame() {
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-  ctx.fillRect(0, 0, cnvW, cnvH);
-  ctx.fillStyle = "white";
-  ctx.font = "50px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("You win!", cnvW / 2, cnvH / 2);
-  ctx.restore();
-}
-
-function render() {
-  if (isGameOver || isPaused || isCompleteLevel) return;
-
-  renderBackground();
-  renderBow();
-  renderArrow();
-  renderTarget();
-}
-
-// Update functions
 function updateInfo() {
-  document.querySelector("#score").innerHTML = "Score: " + score;
-  document.querySelector("#highScore").innerHTML = "High Score: " + highScore;
-  document.querySelector("#arrowLeft").innerHTML = "Arrows Left: " + arrowsLeft;
-  document.querySelector("#timeLeft").innerHTML =
-    "Time Left: " + timeLeft + "s";
-  document.querySelector("#level").innerHTML = "Level: " + currLevel?.id ?? 0;
-  document.querySelector("#description").innerHTML =
-    currLevel?.description ?? "Press Start";
+  ui.score.textContent = 'Score: ' + score;
+  ui.highScore.textContent = 'High Score: ' + highScore;
+  ui.level.textContent = 'Level: ' + (currLevel?.id ?? 0);
+  ui.description.textContent = state === 'loading' ? 'Loading sprites...' : state === 'error' ? 'Sprites failed to load. Reload to retry.' : currLevel?.description ?? 'Press Start';
+  ui.arrowLeft.textContent = 'Arrows Left: ' + arrowsLeft;
+  ui.timeLeft.textContent = 'Time Left: ' + Math.ceil(remainingTime) + 's';
+  ui.targetsLeft.textContent = 'Targets Left: ' + targets.filter(t => !t.hit).length;
+  ui.bowStatus.textContent = bow.empty ? 'Bow: click or press Space to reload' : 'Bow: ready';
+  ui.startButton.disabled = state === 'loading' || state === 'error';
+  ui.pauseButton.hidden = state !== 'playing' && state !== 'paused';
+  ui.pauseButton.textContent = state === 'paused' ? 'Resume' : 'Pause';
+  ui.shootButton.disabled = state !== 'playing' || arrowsLeft <= 0 || remainingTime <= 0;
+  ui.shootButton.textContent = bow.empty ? 'Reload' : 'Shoot';
 }
-
-// Collision
-function collision(obj1, obj2) {
-  return (
-    obj1.x + obj1.w > obj2.x &&
-    obj1.x < obj2.x + obj2.w &&
-    obj1.y + obj1.h / 2 > obj2.y &&
-    obj1.y < obj2.y + obj2.h / 2
-  );
+function startLevel(index) {
+  levelIndex = index;
+  currLevel = LEVELS[index];
+  remainingTime = currLevel.time;
+  arrowsLeft = currLevel.arrow;
+  arrows = [];
+  targets = [];
+  transitionTime = 0;
+  Object.assign(bow, { y: 250, empty: false, animationTime: null });
+  for (let i = 0; i < currLevel.targets; i++) {
+    targets.push({ x: WIDTH / 2 + i * 25, y: currLevel.spawnType === 'line' ? HEIGHT - 46 : Math.random() * (HEIGHT - 46), w: 25, h: 46, hit: false, popTime: 0 });
+  }
+  setState('playing');
 }
-
-function setPopInterval() {
-  popInterval = setInterval(() => {
-    if (targets?.length === 0) return;
-
-    targets?.forEach((t) => {
-      if (!t.shooted) return;
-
-      t.img.src = BALOON_POP_ANIMATION[++t.anim];
-    });
-  }, 75);
+function start() {
+  if (state === 'loading' || state === 'error') return;
+  score = 0;
+  startLevel(0);
+  ui.startButton.textContent = 'Restart';
+  cnv.focus({ preventScroll: true });
 }
-
-function handleTargetPop() {
-  targets.forEach((t) => {
-    if (!t.shooted) return;
-
-    if (t.anim === BALOON_POP_ANIMATION.length - 1) {
-      t.pop = true;
-      score += 10;
-      return;
-    }
-  });
-
-  targets = targets.filter((t) => !t.pop);
+function pauseOrResume() {
+  if (state !== 'playing' && state !== 'paused') return;
+  setState(state === 'playing' ? 'paused' : 'playing');
+  cnv.focus({ preventScroll: true });
 }
-
-function updateArrow() {
-  // Update arrows
-  for (let i = 0; i < arrows.length; i++) {
-    arrows[i].update();
-    if (arrows[i].x > cnvW) {
-      arrows.splice(i, 1);
+function collision(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function arrowHitbox(a) {
+  // Only the central shaft of the 32px sprite can hit a balloon.
+  return { x: a.x, y: a.y + 14, w: a.w, h: 4 };
+}
+function shootOrReload() {
+  if (state !== 'playing' || remainingTime <= 0 || arrowsLeft <= 0) return;
+  if (bow.empty) {
+    bow.empty = false;
+    bow.animationTime = null;
+  } else {
+    arrows.push({ x: bow.x + bow.w / 2, y: bow.y + bow.h / 2 - 21, w: 32, h: 32 });
+    arrowsLeft--;
+    bow.empty = true;
+    bow.animationTime = 0;
+  }
+  updateInfo();
+}
+function finishLevel() {
+  score += Math.ceil(remainingTime) * 10 + arrowsLeft * 10;
+  updateHighScore();
+  if (levelIndex === LEVELS.length - 1) setState('won');
+  else {
+    transitionTime = 3;
+    setState('transition');
+  }
+}
+function checkGameOver() {
+  if (state !== 'playing') return;
+  // Hits count immediately: the last hit at the deadline wins, even during its pop animation.
+  if (targets.every(t => t.hit)) return finishLevel();
+  if (remainingTime <= 0 || (arrowsLeft <= 0 && arrows.length === 0)) {
+    updateHighScore();
+    setState('lost');
+  }
+}
+function update(dt) {
+  if (state === 'transition') {
+    transitionTime -= dt;
+    if (transitionTime <= 0) startLevel(levelIndex + 1);
+    return;
+  }
+  if (state !== 'playing') return;
+  remainingTime = Math.max(0, remainingTime - dt);
+  if (remainingTime < 1e-9) remainingTime = 0;
+  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, bow.y + ((keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0)) * 300 * dt));
+  if (bow.animationTime !== null) bow.animationTime = Math.min(0.4, bow.animationTime + dt);
+  for (const t of targets) {
+    if (t.hit) t.popTime += dt;
+    else {
+      t.y -= currLevel.speed * dt;
+      if (t.y + t.h <= 0) t.y = HEIGHT;
     }
   }
-
-  // Check collision
-  for (let i = 0; i < arrows.length; i++) {
-    for (let j = 0; j < targets.length; j++) {
-      if (collision(arrows[i], targets[j])) {
-        targets[j].shooted = true;
+  for (const a of arrows) {
+    a.x += 180 * dt;
+    for (const t of targets) {
+      if (!t.hit && collision(arrowHitbox(a), t)) {
+        t.hit = true;
+        t.popTime = 0;
+        score += 10;
       }
     }
   }
-}
-
-function updateTarget() {
-  for (let i = 0; i < targets.length; i++) {
-    targets[i].update();
-    if (targets[i].y <= 0) {
-      targets[i].y = cnvH - targets[i].h;
-    }
-  }
-}
-
-function checkGameOver() {
-  // Check if complete level
-  if (timeLeft > 0 && targets.length <= 0) {
-    return handleNextLevel();
-  }
-
-  // Check if game over
-  if (
-    targets.length > 0 &&
-    arrows.length <= 0 &&
-    (timeLeft <= 0 || arrowsLeft <= 0)
-  ) {
-    handleGameOver();
-  }
-}
-
-function handleNextLevel() {
-  if (isGameComplete) return;
-
-  isCompleteLevel = true;
-  score += timeLeft * 10 + arrowsLeft * 10;
-
-  // Check if end game
-  levelIndex++;
-  if (levelIndex >= LEVELS.length) {
-    isGameComplete = true;
-    handleEndGame();
-    return;
-  }
-
-  // Render next level
-  renderBackground();
-  renderNextLevel();
-
-  // Start next level
-  setTimeout(function () {
-    currLevel = LEVELS[levelIndex];
-    updateHighScore();
-    startLevel(levelIndex);
-  }, 3000);
-}
-
-function handleGameOver() {
-  isGameOver = true;
-  clearInterval(popInterval);
-  renderBackground();
-  renderGameOver();
-  document.querySelector("#pauseButton").style.visibility = "hidden";
-  updateHighScore();
-}
-
-function handleEndGame() {
-  isGameOver = true;
-  renderBackground();
-  renderEndGame();
-  document.querySelector("#pauseButton").style.visibility = "hidden";
-}
-
-function updateHighScore() {
-  if (score > highScore) {
-    highScore = score;
-  }
-}
-
-function update() {
-  if (isGameOver || isPaused || isCompleteLevel) return;
-
-  bow.update();
-  updateArrow();
-  handleTargetPop();
-  updateTarget();
-  updateInfo();
+  arrows = arrows.filter(a => a.x <= WIDTH);
+  targets = targets.filter(t => !t.hit || t.popTime < 0.45);
   checkGameOver();
+  updateInfo();
 }
-
-// Loop functions
-function loop() {
-  update();
-  render();
-
-  window.requestAnimationFrame(loop, cnv);
+function drawSprite(name, obj) {
+  const img = images.get(name);
+  if (img) ctx.drawImage(img, 0, 0, obj.w, obj.h, obj.x, obj.y, obj.w, obj.h);
 }
-
-// Spawn
-function spawnTarget() {
-  const newTarget = Object.assign({}, target);
-  newTarget.x = targets.length * 25 + cnvW / 2;
-  newTarget.y =
-    currLevel.spawnType == "line"
-      ? cnvH - newTarget.h
-      : Math.random() * (cnvH - newTarget.h);
-  (newTarget.img = new Image()), (newTarget.img.src = "images/baloon.png");
-  return newTarget;
-}
-
-// Start level
-function startLevel(index) {
-  // set current level
-  currLevel = LEVELS[index];
-
-  // set variables
-  timeLeft = currLevel.time;
-  arrowsLeft = currLevel.arrow;
-  isGameOver = false;
-  isPaused = false;
-  isCompleteLevel = false;
-  arrows = [];
-
-  // spawn targets
-  targets = [];
-  for (let i = 0; i < currLevel.targets; i++) {
-    targets.push(spawnTarget());
+function render() {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = 'green';
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  const bowFrame = bow.animationTime === null ? 0 : Math.min(5, 1 + Math.floor((bow.animationTime + 1e-9) / 0.1));
+  drawSprite(BOW_FRAMES[bowFrame], bow);
+  arrows.forEach(a => drawSprite('arrow', a));
+  targets.forEach(t => drawSprite(POP_FRAMES[t.hit ? Math.min(5, Math.floor(t.popTime / 0.075)) : 0], t));
+  const message = { loading: 'Loading...', error: 'Unable to load sprites', idle: 'Press Start', paused: 'Paused', transition: 'Well done!', lost: 'Game Over', won: 'You win!' }[state];
+  if (message) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = 'white';
+    ctx.font = '50px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, WIDTH / 2, HEIGHT / 2);
   }
-
-  clearInterval(popInterval);
-  setPopInterval();
-
-  // start timer
-  clearInterval(timer);
-  timer = setInterval(function () {
-    if (timeLeft <= 0) {
-      clearInterval(timer);
-      return;
+}
+function loop(timestamp) {
+  if (previousTimestamp !== null) {
+    accumulator += Math.min(0.25, Math.max(0, (timestamp - previousTimestamp) / 1000));
+    while (accumulator + 1e-9 >= STEP) {
+      accumulator = Math.max(0, accumulator - STEP);
+      update(STEP);
     }
-    timeLeft--;
-  }, 1000);
+  }
+  previousTimestamp = timestamp;
+  render();
+  window.requestAnimationFrame(loop);
 }
-
-// Init
-function init() {
-  // reset variables
-  levelIndex = 0;
-  score = 0;
-  isGameComplete = false;
-
-  startLevel(levelIndex);
+function positionBow(event) {
+  if (state !== 'playing') return;
+  const rect = cnv.getBoundingClientRect();
+  if (rect.height <= 0) return;
+  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, (event.clientY - rect.top) * HEIGHT / rect.height - bow.h / 2));
 }
-
-// Controls
-cnv.addEventListener("keydown", function (e) {
-  if (isGameOver) return;
-
-  switch (e.code) {
-    case "ArrowUp":
-      bow.dy = -bow.speed;
-      break;
-    case "ArrowDown":
-      bow.dy = bow.speed;
-      break;
+cnv.addEventListener('pointermove', event => {
+  if (event.pointerType === 'mouse' || event.buttons) positionBow(event);
+});
+cnv.addEventListener('pointerdown', event => {
+  if (!event.isPrimary || event.button !== 0 || state !== 'playing') return;
+  event.preventDefault();
+  cnv.focus({ preventScroll: true });
+  cnv.setPointerCapture(event.pointerId);
+  positionBow(event);
+  shootOrReload();
+});
+cnv.addEventListener('keydown', event => {
+  if (!['ArrowUp', 'ArrowDown', 'Space', 'KeyP', 'Escape'].includes(event.code)) return;
+  event.preventDefault();
+  if (event.code === 'KeyP' || event.code === 'Escape') {
+    if (!event.repeat) pauseOrResume();
+  } else if (state === 'playing') {
+    if (event.code === 'Space') { if (!event.repeat) shootOrReload(); }
+    else keys.add(event.code);
   }
 });
-
-cnv.addEventListener("keyup", function (e) {
-  if (isGameOver) return;
-
-  switch (e.code) {
-    case "ArrowUp":
-      bow.dy = 0;
-      break;
-    case "ArrowDown":
-      bow.dy = 0;
-      break;
-  }
+cnv.addEventListener('keyup', event => {
+  keys.delete(event.code);
+  if (['ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
 });
-
-cnv.addEventListener("mousemove", function (e) {
-  if (isGameOver) return;
-
-  let rect = cnv.getBoundingClientRect();
-  bow.y = e.clientY - rect.top - bow.h / 2;
+cnv.addEventListener('blur', () => keys.clear());
+window.addEventListener('blur', () => {
+  if (state === 'playing') setState('paused');
+  keys.clear();
 });
-
-function bowReload() {
-  bow.empty = false;
-  bow.img.src = BOW_SHOOT_ANIMATION[0];
-}
-
-function newArrow() {
-  let newArrow = Object.assign({}, arrow);
-  newArrow.x = bow.x + bow.w / 2;
-  newArrow.y = bow.y + bow.h / 2 - newArrow.h / 2 - 5;
-  return newArrow;
-}
-
-function bowDrawAnimation() {
-  // bow draw animation
-  bow.img.src = BOW_SHOOT_ANIMATION[1];
-  setTimeout(function () {
-    bow.img.src = BOW_SHOOT_ANIMATION[2];
-  }, 100);
-  setTimeout(function () {
-    bow.img.src = BOW_SHOOT_ANIMATION[3];
-  }, 200);
-  setTimeout(function () {
-    bow.img.src = BOW_SHOOT_ANIMATION[4];
-  }, 300);
-  setTimeout(function () {
-    bow.img.src = BOW_SHOOT_ANIMATION[5];
-  }, 400);
-  bow.empty = true;
-}
-
-function shootArrow() {
-  arrows.push(newArrow());
-
-  arrowsLeft--;
-
-  bowDrawAnimation();
-}
-
-cnv.addEventListener("mousedown", function (e) {
-  if (timeLeft <= 0 || arrowsLeft <= 0) return;
-
-  if (bow.empty) {
-    bowReload();
-  } else {
-    shootArrow();
-  }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'playing') setState('paused');
+  resetClock();
 });
-
-// Buttons
-function start() {
-  init();
-  document.querySelector("#startButton").innerHTML = "Restart";
-  document.querySelector("#pauseButton").style.visibility = "visible";
+ui.startButton.addEventListener('click', start);
+ui.pauseButton.addEventListener('click', pauseOrResume);
+ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });
+function preloadSprites() {
+  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, 'arrow'])].map(name => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { images.set(name, img); resolve(); };
+    img.onerror = () => reject(new Error('Unable to load ' + name));
+    img.src = 'images/' + name + '.png';
+  })));
 }
-
-document.querySelector("#startButton").addEventListener("click", start);
-
-function pauseOrResume() {
-  isPaused = !isPaused;
-  document.querySelector("#pauseButton").innerHTML = isPaused
-    ? "Resume"
-    : "Pause";
-}
-
-document.querySelector("#pauseButton").addEventListener("click", pauseOrResume);
-
-// start loop
-loop();
+updateInfo();
+preloadSprites().then(() => setState('idle')).catch(() => setState('error'));
+window.requestAnimationFrame(loop);

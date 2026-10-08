@@ -1,41 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bow and Arrow</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/script.js" defer></script>
 </head>
-
 <body>
     <header>
         <h1>Bow and Arrow</h1>
         <div class="header-buttons">
-            <button id="pauseButton">Pause</button>
-            <button id="startButton">Start</button>
+            <button id="pauseButton" type="button" hidden>Pause</button>
+            <button id="startButton" type="button" disabled>Start</button>
         </div>
     </header>
-    <div class="wrapper">
+    <main class="wrapper">
         <div class="game-info">
             <div class="info-column">
-                <div id="score" class="info-item">Score: </div>
-                <div id="highScore" class="info-item">High Score: </div>
+                <div id="score" class="info-item">Score: 0</div>
+                <div id="highScore" class="info-item">High Score: 0</div>
             </div>
             <div class="info-column">
-                <div id="level" class="info-item"></div>
-                <div id="description" class="info-item">Press Start</div>
+                <div id="level" class="info-item">Level: 0</div>
+                <div id="description" class="info-item">Loading sprites...</div>
+                <div id="targetsLeft" class="info-item">Targets Left: 0</div>
             </div>
             <div class="info-column">
-                <div id="arrowLeft" class="info-item">Arrows Left: </div>
-                <div id="timeLeft" class="info-item">Time Left: </div>
+                <div id="arrowLeft" class="info-item">Arrows Left: 0</div>
+                <div id="timeLeft" class="info-item">Time Left: 0s</div>
             </div>
         </div>
-
-        <canvas id="game-area"></canvas>
-
-        <script src="js/script.js"></script>
-    </div>
+        <canvas id="game-area" width="800" height="600" tabindex="0" aria-label="Bow and Arrow game" aria-describedby="instructions">Your browser needs canvas support to play.</canvas>
+        <div class="game-controls">
+            <span id="bowStatus" role="status">Bow: ready</span>
+            <button id="shootButton" type="button" disabled>Shoot</button>
+        </div>
+        <p id="instructions">Move with the mouse, drag on touch screens, or use ↑ / ↓. Click, tap, or press Space to shoot; repeat to reload. Press P or Escape to pause. Arrows can hit multiple balloons. The last hit at the time limit wins.</p>
+    </main>
 </body>
-
 </html>
