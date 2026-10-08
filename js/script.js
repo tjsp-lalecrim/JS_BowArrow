@@ -3,6 +3,7 @@ const LEVELS = [
   { id: 2, description: 'Avoid the yellow balloons', targets: 15, friendlyTargets: 5, arrow: 20, time: 75, speed: 80, spawnType: 'random', sway: 10, swayRate: 1.0, variedSpeed: false },
   { id: 3, description: 'Butterflies in bubbles', targets: 15, arrow: 20, time: 75, speed: 75, spawnType: 'random', targetType: 'bubble', sway: 0, swayRate: 0, variedSpeed: true },
   { id: 4, description: 'SLIMED — survive the swamp', targets: 12, arrow: 20, time: 90, speed: 55, targetType: 'slime' },
+  { id: 5, description: 'Bulls Eye — hit the gold center', targets: 1, arrow: 20, time: 75, speed: 70, targetType: 'bullseye' },
 ];
 const BOW_FRAMES = ['bow', 'bow_shoot_01', 'bow_shoot_02', 'bow_shoot_03', 'bow_shoot_04', 'bow_reload'];
 const POP_FRAMES = ['baloon', 'baloon_pop_01', 'baloon_pop_02', 'baloon_pop_03', 'baloon_pop_04', 'baloon_pop_05'];
@@ -190,6 +191,10 @@ function startLevel(index) {
 
   Object.assign(bow, { y: (HEIGHT - bow.h) / 2, empty: false, animationTime: null });
   for (let i = 0; i < currLevel.targets + (currLevel.friendlyTargets ?? 0); i++) {
+    if (currLevel.targetType === 'bullseye') {
+      targets.push({ type: 'bullseye', x: 680, y: 260, w: 80, h: 80, speed: currLevel.speed, direction: -1, motionTime: 0, hit: false, popTime: 0, missTime: 0 });
+      continue;
+    }
     if (currLevel.targetType === 'slime') {
       targets.push({ type: 'slime', x: WIDTH + i * 100, y: 24 + Math.random() * (HEIGHT - 72), w: 32, h: 24, speed: currLevel.speed + (i % 3) * 5, motionTime: 0, hit: false, popTime: 0 });
       continue;
@@ -235,11 +240,31 @@ function arrowHitbox(a) {
 }
 function targetCollision(arrow, target) {
   const box = arrowHitbox(arrow);
+  if (target.type === 'bullseye') {
+    // Only the arrow tip may score; the outer rings absorb a missed shot.
+    const tip = { x: box.x + box.w - 2, y: box.y, w: 2, h: box.h };
+    const cx = target.x + target.w / 2;
+    const cy = target.y + target.h / 2;
+    // Evaluate aim at first contact, otherwise the front rim would block every shot.
+    return targetDiskCollision(tip, target) &&
+      circleCollision({ x: cx - 1, y: tip.y, w: 2, h: tip.h }, cx, cy, 8);
+  }
   if (target.type !== 'bubble') return collision(box, target);
   // 32px bubble has a 2px transparent margin and a 14px radius.
   const cx = target.x + target.w / 2;
   const cy = target.y + target.h / 2;
   const radius = target.w / 2 - 2;
+  return circleCollision(box, cx, cy, radius);
+}
+function targetDiskCollision(box, target) {
+  // The tilted target occupies the middle 40px of its 80px sprite cell.
+  const cx = target.x + target.w / 2;
+  const cy = target.y + target.h / 2;
+  const rx = target.w / 4;
+  const ry = target.h / 2;
+  return circleCollision({ x: (box.x - cx) / rx, y: (box.y - cy) / ry, w: box.w / rx, h: box.h / ry }, 0, 0, 1);
+}
+function circleCollision(box, cx, cy, radius) {
   const nearestX = Math.max(box.x, Math.min(cx, box.x + box.w));
   const nearestY = Math.max(box.y, Math.min(cy, box.y + box.h));
   return (nearestX - cx) ** 2 + (nearestY - cy) ** 2 <= radius ** 2;
@@ -247,7 +272,8 @@ function targetCollision(arrow, target) {
 function updateTargetMotion(t, dt) {
   t.motionTime = (t.motionTime ?? 0) + dt;
   if (t.type === 'slime') { t.x -= t.speed * dt; return; }
-  if (t.type === 'bubble') {
+  if (t.type === 'bullseye') t.missTime = Math.max(0, t.missTime - dt);
+  if (t.type === 'bubble' || t.type === 'bullseye') {
     const top = 16;
     const bottom = HEIGHT - t.h - 16;
     t.y += t.direction * t.speed * dt;
@@ -344,8 +370,16 @@ function update(dt) {
   for (const a of arrows) {
     a.x += 180 * dt;
     for (const t of targets) {
-      if (!t.hit && targetCollision(a, t)) {
+      if (t.hit || a.spent) continue;
+      if (targetCollision(a, t)) {
         registerTargetHit(t);
+        if (t.type === 'bullseye') a.spent = true;
+      } else if (t.type === 'bullseye') {
+        const tip = { x: a.x + a.w - 2, y: a.y, w: 2, h: a.h };
+        if (targetDiskCollision(tip, t)) {
+          a.spent = true;
+          t.missTime = 0.2;
+        }
       }
     }
   }
@@ -363,7 +397,7 @@ function update(dt) {
       t.popTime = 0;
     }
   }
-  arrows = arrows.filter(a => a.x <= WIDTH);
+  arrows = arrows.filter(a => !a.spent && a.x <= WIDTH);
   targets = targets.filter(t => !t.hit || t.popTime < (t.type === 'bubble' ? 0.75 : 0.45));
   checkGameOver();
   updateInfo();
@@ -373,6 +407,14 @@ function drawSprite(name, obj) {
   if (img) ctx.drawImage(img, obj.x, obj.y, obj.w, obj.h);
 }
 function renderTarget(t) {
+  if (t.type === 'bullseye') {
+    ctx.save();
+    ctx.globalAlpha = t.hit ? Math.max(0, 1 - t.popTime / 0.45) : 1;
+    if (t.missTime > 0) ctx.filter = 'brightness(1.4)';
+    drawSprite('target', t);
+    ctx.restore();
+    return;
+  }
   if (t.type === 'slime') {
     ctx.save();
     ctx.globalAlpha = t.hit ? Math.max(0, 1 - t.popTime / 0.45) : 1;
@@ -489,7 +531,7 @@ ui.startButton.addEventListener('click', start);
 ui.pauseButton.addEventListener('click', pauseOrResume);
 ui.shootButton.addEventListener('click', () => { shootOrReload(); cnv.focus({ preventScroll: true }); });
 function preloadSprites() {
-  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime'])].map(name => new Promise((resolve, reject) => {
+  return Promise.all([...new Set([...BOW_FRAMES, ...POP_FRAMES, ...BUTTERFLY_FRAMES, 'bubble', 'arrow', 'archer', 'slime', 'target'])].map(name => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => { images.set(name, img); resolve(); };
     img.onerror = () => reject(new Error('Unable to load ' + name));

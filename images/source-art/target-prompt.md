@@ -1,0 +1,4 @@
+Created with built-in ImageGen. Runtime: images/target.png (80x80). Rebuild: scripts/build-target-sprite.ps1. Source: target-reference.png.
+
+Exact prompt:
+Use case: stylized-concept. Asset type: transparent pixel-art bullseye target sprite for a Windows 95 inspired archery game. Single circular archery target viewed exactly straight-on, no perspective. Five flat concentric circular zones: outer ivory ring, charcoal black ring, blue ring, red ring, solid gold yellow center. Exact radius proportions outer40 black32 blue24 red16 gold8, designed for 80x80 logical pixels. All circles perfectly concentric, flat crisp colors with subtle pixel-art outlines, no texture or holes in the yellow scoring center. Entire circumference visible with even tiny transparent padding. Genuine transparent background outside disk. No stand, arrows, shadow, text, numbers, landscape or extra objects. Render enlarged clean pixel art.

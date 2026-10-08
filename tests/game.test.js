@@ -30,7 +30,7 @@ test('initial screen and preload failure', async () => {
   const g = await game();
   assert.equal(g.run('state'), 'idle');
   assert.equal(g.elements.level.textContent, 'Level: 0');
-  assert.equal(g.run('images.size'), 18);
+  assert.equal(g.run('images.size'), 19);
   const failed = await game({ failImage: true });
   assert.equal(failed.run('state'), 'error');
   assert.equal(failed.elements.startButton.disabled, true);
@@ -69,7 +69,7 @@ test('deadline loses even with arrows in flight', async () => {
 });
 test('last hit wins before pop finishes and final bonus persists', async () => {
   const g = await game();
-  g.run('startLevel(3); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
+  g.run('startLevel(4); score=100; remainingTime=10; arrowsLeft=2; targets.forEach(t=>t.hit=true); checkGameOver()');
   assert.equal(g.run('state'), 'won');
   assert.equal(g.run('score'), 220);
   assert.equal(g.elements.score.textContent, 'Score: 220');
@@ -358,7 +358,7 @@ test('slime motion pauses and enemy contact consumes a feather or defeats the pl
   g.run('protectionTime=0; targets[1].x=60; targets[1].y=bow.y+20; update(1/120)');
   assert.equal(g.run('state'),'lost');
 });
-test('shooting and dodging resolve enemies and final wave wins', async () => {
+test('shooting and dodging resolve enemies and swamp completion advances', async () => {
   const g=await game();
   g.run('startLevel(3); targets[0].x=100; targets[0].y=100; arrows=[{x:90,y:110,w:32,h:5}]; update(1/120)');
   assert.equal(g.run('score'),10);
@@ -367,7 +367,9 @@ test('shooting and dodging resolve enemies and final wave wins', async () => {
   assert.equal(g.run('targets[1].hit'),true);
   assert.equal(g.run('score'),10);
   g.run('targets.forEach(t=>t.hit=true); checkGameOver()');
-  assert.equal(g.run('state'),'won');
+  assert.equal(g.run('state'),'transition');
+  g.run('nextLevel()');
+  assert.equal(g.run('currLevel.id'),5);
   g.run('start()');
   assert.equal(g.run('currLevel.id'),1);
   assert.equal(g.run('magicFeathers'),0);
@@ -407,10 +409,51 @@ test('new checkpoints replace previous progress and final victory removes the sa
   const g=await game();
   g.run('start(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
   assert.equal(JSON.parse(g.store.get('bowArrow.checkpoint')).levelIndex,2);
-  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
+  g.run('nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver(); nextLevel(); targets=[]; checkGameOver()');
   assert.equal(g.run('state'),'won');
   assert.equal(g.run('checkpoint'),null);
   assert.equal(g.store.has('bowArrow.checkpoint'),false);
+});
+test('bullseye moves vertically, reflects at edges and freezes on pause', async () => {
+  const g=await game();
+  g.run('startLevel(4); update(1)');
+  assert.equal(g.run('targets[0].x'),680);
+  assert.equal(g.run('targets[0].y'),190);
+  g.run('targets[0].y=16.1; update(0.01)');
+  assert.equal(g.run('targets[0].direction'),1);
+  g.run('pauseOrResume()');
+  const y=g.run('targets[0].y');
+  g.run('update(2)');
+  assert.equal(g.run('targets[0].y'),y);
+});
+test('outer rings absorb arrows without reward and gold center wins', async () => {
+  const g=await game();
+  g.run('startLevel(4); targets[0].speed=0; arrowsLeft=3; arrows=[{x:672,y:280,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('arrows.length'),0);
+  assert.equal(g.run('score'),0);
+  assert.equal(g.run('arrowsLeft'),3);
+  assert.equal(g.run('state'),'playing');
+  // Evaluate a centered shot at first contact with the disk, before it reaches the gold ring.
+  g.run('arrows=[{x:669,y:298,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('state'),'won');
+  assert.equal(g.run('arrowsLeft'),4);
+  assert.equal(g.run('checkpoint'),null);
+});
+test('bullseye deadline and last missed arrow lose; checkpoint restores stage 5', async () => {
+  const g=await game();
+  g.run('startLevel(3); arrowsLeft=5; magicFeathers=2; targets=[]; checkGameOver(); nextLevel(); targets[0].speed=0; arrowsLeft=0; arrows=[{x:672,y:280,w:32,h:5}]; update(1/120)');
+  assert.equal(g.run('state'),'lost');
+  g.run('continueCheckpoint()');
+  assert.equal(g.run('currLevel.id'),5);
+  assert.equal(g.run('arrowsLeft'),25);
+  assert.equal(g.run('magicFeathers'),2);
+  g.run('remainingTime=0; checkGameOver()');
+  assert.equal(g.run('state'),'lost');
+});
+test('tilted target collision ignores transparent side margins', async () => {
+  const g=await game();
+  assert.equal(g.run('targetDiskCollision({x:685,y:298,w:2,h:5},{x:680,y:260,w:80,h:80})'),false);
+  assert.equal(g.run('targetDiskCollision({x:701,y:298,w:2,h:5},{x:680,y:260,w:80,h:80})'),true);
 });
 (async () => {
   let failures=0;
