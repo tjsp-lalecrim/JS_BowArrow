@@ -10,7 +10,7 @@ Open `index.html` in a modern browser. No dependencies or build step are require
 
 ## Controls
 
-- Mouse or touch: position the bow, then click or tap to shoot. Click or tap again to reload.
+- Mouse: position the bow, then click to shoot. Click again to reload. Touch/pen: canvas gestures only move the archer; use the Shoot/Reload button to fire.
 - Keyboard: focus the game canvas; use Up/Down to move and Space to shoot or reload.
 - P, Escape, or the Pause button pauses/resumes. Losing window focus or hiding the tab automatically pauses gameplay.
 - On touch screens, drag to move; the Shoot/Reload button is also available.
@@ -80,3 +80,6 @@ Protect the white messenger dove and shoot all twelve hostile vultures. The vult
 The stage grants 20 arrows on top of carried stock and lasts 90 seconds. Continue restores the stage-7 checkpoint with fresh enemies and a healthy dove. Restart resets the messenger. Movement and quantities are adaptation choices. Theme reference: https://en.everybodywiki.com/Bow_and_Arrow_(pc_game). The original help file specifically requires saving the dove and stopping all vultures.
 
 The transparent ImageGen bird sprites are images/vulture.png (40x28, facing LEFT toward the archer) and images/dove.png (32x24, facing RIGHT toward its delivery destination). Exact prompts and references are under images/source-art. Rebuild with scripts/build-bird-sprites.ps1.
+## Mobile and full screen
+
+Full Screen uses native browser fullscreen when supported, and otherwise expands the layout within the browser viewport. Exit Full Screen returns to the normal layout. The compact HUD and controls remain visible; the game preserves its 4:3 aspect ratio and input mapping accounts for letterboxing. The layout uses dynamic viewport height and safe-area padding. Touch and pen input on the canvas never fires: movement and shooting are separate, so dragging cannot spend arrows. Mouse clicks and Space retain their existing behavior. The Shoot/Reload button has a larger touch target. Native fullscreen availability depends on the browser; real-device visual verification is still pending.

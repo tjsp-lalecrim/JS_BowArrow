@@ -21,10 +21,11 @@ ctx.imageSmoothingEnabled = false;
 const WIDTH = cnv.width = 800;
 const HEIGHT = cnv.height = 600;
 const STEP = 1 / 120;
-const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['score', 'highScore', 'level', 'description', 'arrowLeft', 'magicFeathers', 'timeLeft', 'targetsLeft', 'bowStatus', 'pauseButton', 'startButton', 'shootButton', 'soundButton', 'nextLevelButton', 'continueButton', 'fullscreenButton'].map(id => [id, document.getElementById(id)]));
 const images = new Map();
 const keys = new Set();
 let state = 'loading';
+let immersive = false;
 let levelIndex = 0;
 let currLevel = null;
 let arrows = [];
@@ -519,7 +520,11 @@ function positionBow(event) {
   if (state !== 'playing') return;
   const rect = cnv.getBoundingClientRect();
   if (rect.height <= 0) return;
-  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, (event.clientY - rect.top) * HEIGHT / rect.height - bow.h / 2));
+  // Full-screen canvas may have letterboxing; map touches to the actual picture.
+  const pictureHeight = Number.isFinite(rect.width) ? Math.min(rect.height, rect.width * HEIGHT / WIDTH) : rect.height;
+  if (pictureHeight <= 0) return;
+  const pictureTop = rect.top + (rect.height - pictureHeight) / 2;
+  bow.y = Math.max(0, Math.min(HEIGHT - bow.h, (event.clientY - pictureTop) * HEIGHT / pictureHeight - bow.h / 2));
 }
 cnv.addEventListener('pointermove', event => {
   if (event.pointerType === 'mouse' || event.buttons) positionBow(event);
@@ -530,7 +535,8 @@ cnv.addEventListener('pointerdown', event => {
   cnv.focus({ preventScroll: true });
   cnv.setPointerCapture(event.pointerId);
   positionBow(event);
-  shootOrReload();
+  // Touch and pen gestures move only; the dedicated button fires/reloads.
+  if (event.pointerType === 'mouse') shootOrReload();
 });
 cnv.addEventListener('keydown', event => {
   if (!['ArrowUp', 'ArrowDown', 'Space', 'KeyP', 'Escape'].includes(event.code)) return;
@@ -561,6 +567,31 @@ function nextLevel() {
   startLevel(levelIndex + 1);
   cnv.focus({ preventScroll: true });
 }
+function updateFullscreen() {
+  document.documentElement?.classList.toggle('immersive', immersive);
+  ui.fullscreenButton.textContent = immersive ? 'Exit Full Screen' : 'Full Screen';
+  ui.fullscreenButton.setAttribute('aria-pressed', String(immersive));
+}
+async function toggleFullscreen() {
+  if (immersive) {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try { await document.exitFullscreen(); } catch { return; }
+    }
+    immersive = false;
+  } else {
+    if (document.documentElement?.requestFullscreen) {
+      try { await document.documentElement.requestFullscreen(); } catch { /* Use viewport mode when native fullscreen is unavailable. */ }
+    }
+    immersive = true;
+  }
+  updateFullscreen();
+}
+document.addEventListener('fullscreenchange', () => {
+  immersive = Boolean(document.fullscreenElement);
+  updateFullscreen();
+});
+ui.fullscreenButton.addEventListener('click', toggleFullscreen);
+updateFullscreen();
 ui.continueButton.addEventListener('click', continueCheckpoint);
 ui.nextLevelButton.addEventListener('click', nextLevel);
 ui.soundButton.addEventListener('click', toggleSound);

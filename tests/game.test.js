@@ -521,6 +521,48 @@ test('stage 7 checkpoint retries and messenger departs only after all enemies ar
   assert.equal(g.run('dove'),null);
   assert.equal(g.run('messageDelivered'),false);
 });
+test('touch and pen move without firing; mouse and shoot button still fire', async () => {
+  const g=await game();
+  g.run('start()');
+  const pointer=type=>({isPrimary:true,button:0,pointerType:type,pointerId:1,clientY:200,preventDefault(){}});
+  g.elements['game-area'].handlers.pointerdown(pointer('touch'));
+  g.elements['game-area'].handlers.pointermove({...pointer('touch'),buttons:1,clientY:300});
+  assert.equal(g.run('bow.y'),368);
+  assert.equal(g.run('arrowsLeft'),20);
+  assert.equal(g.run('arrows.length'),0);
+  g.elements['game-area'].handlers.pointerdown(pointer('pen'));
+  assert.equal(g.run('arrowsLeft'),20);
+  g.elements.shootButton.handlers.click();
+  assert.equal(g.run('arrowsLeft'),19);
+  g.elements.shootButton.handlers.click();
+  g.elements['game-area'].handlers.pointerdown(pointer('mouse'));
+  assert.equal(g.run('arrowsLeft'),18);
+});
+test('letterboxed fullscreen maps pointer to the visible game picture', async () => {
+  const g=await game();
+  g.elements['game-area'].getBoundingClientRect=()=>({top:100,width:400,height:600});
+  g.run('start(); positionBow({clientY:400})');
+  assert.equal(g.run('bow.y'),268);
+  g.run('positionBow({clientY:250})');
+  assert.equal(g.run('bow.y'),0);
+  g.run('positionBow({clientY:550})');
+  assert.equal(g.run('bow.y'),536);
+});
+test('fullscreen supports native entry and exit plus fallback when unavailable or denied', async () => {
+  for (const mode of ['native','unsupported','denied']) {
+    const g=await game();
+    g.run("document.documentElement={classList:{toggle(name,value){this.active=value}}}");
+    if(mode==='native') g.run('document.documentElement.requestFullscreen=async()=>{document.fullscreenElement=document.documentElement}; document.exitFullscreen=async()=>{document.fullscreenElement=null}');
+    if(mode==='denied') g.run('document.documentElement.requestFullscreen=async()=>{throw Error("denied")}');
+    await g.run('toggleFullscreen()');
+    assert.equal(g.run('immersive'),true);
+    assert.equal(g.elements.fullscreenButton['aria-pressed'],'true');
+    assert.equal(g.run('document.documentElement.classList.active'),true);
+    await g.run('toggleFullscreen()');
+    assert.equal(g.run('immersive'),false);
+    assert.equal(g.elements.fullscreenButton['aria-pressed'],'false');
+  }
+});
 (async () => {
   let failures=0;
   for (const {name,fn} of tests) {
